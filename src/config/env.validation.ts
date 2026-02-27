@@ -15,4 +15,13 @@ export const envValidationSchema = Joi.object({
     NODE_ENV: Joi.string()
         .valid('development', 'production', 'test')
         .default('development'),
+
+    // Trial & billing
+    TRIAL_DURATION_DAYS: Joi.number().default(14),
+    ALLOW_TRIAL_WITHOUT_CARD: Joi.boolean().default(false),
+    TRIAL_SMS_LIMIT: Joi.number().default(100),
+    TRIAL_AI_LIMIT: Joi.number().default(5),
+    TRIAL_DAILY_AI_LIMIT: Joi.number().default(2),
+    HOURLY_SMS_RATE_LIMIT: Joi.number().default(20),
+    AI_MONTHLY_LIMIT: Joi.number().default(50),
 });

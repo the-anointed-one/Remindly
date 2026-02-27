@@ -43,10 +43,23 @@ export class AuthService {
             .replace(/^-|-$/g, '');
 
         const result = await this.prisma.$transaction(async (tx) => {
+            const trialDays = this.configService.get<number>('TRIAL_DURATION_DAYS', 14);
+            const now = new Date();
+            const trialEnd = new Date(now);
+            trialEnd.setDate(trialEnd.getDate() + trialDays);
+
             const tenant = await tx.tenant.create({
                 data: {
                     name: dto.tenantName,
                     slug: `${slug}-${Date.now()}`,
+                    planType: 'SMS',
+                    subscriptionStatus: 'TRIALING',
+                    trialStartDate: now,
+                    trialEndDate: trialEnd,
+                    trialActive: true,
+                    smsTrialLimit: this.configService.get<number>('TRIAL_SMS_LIMIT', 100),
+                    aiTrialLimit: this.configService.get<number>('TRIAL_AI_LIMIT', 5),
+                    aiMonthlyLimit: this.configService.get<number>('AI_MONTHLY_LIMIT', 50),
                 },
             });
 

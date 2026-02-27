@@ -17,6 +17,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 // Feature modules
 import { AuditModule } from './modules/audit/audit.module';
+import { PlanModule } from './modules/plan/plan.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
@@ -45,6 +46,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 
     // Feature modules
     AuditModule,
+    PlanModule,
     AuthModule,
     TenantModule,
     UserModule,
