@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────
+# Remindly — .gitignore
+# ─────────────────────────────────────────────
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment & secrets
+.env
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Temporary / intermediate files
+.tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
