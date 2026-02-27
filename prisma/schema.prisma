@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────
-// Remindly — Prisma Schema
+// Remindly — Prisma Schema (Extended)
 // ─────────────────────────────────────────────
 
 generator client {
@@ -19,6 +19,28 @@ enum UserRole {
   STAFF
 }
 
+enum PlanType {
+  SMS
+  SMS_VOICE
+  SMS_VOICE_AI
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
 enum AppointmentStatus {
   SCHEDULED
   CONFIRMED
@@ -27,20 +49,60 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum ChannelType {
+  SMS
+  VOICE
+  EMAIL
+  WHATSAPP
+}
+
+enum MessageDirection {
+  OUTBOUND
+  INBOUND
+}
+
 // ── Models ───────────────────────────────────
 
 model Tenant {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String   @unique
-  plan      String   @default("free")
+  id   String @id @default(uuid()) @db.Uuid
+  name String
+  slug String @unique
+
+  // Subscription & trial
+  planType               PlanType           @default(SMS) @map("plan_type")
+  subscriptionStatus     SubscriptionStatus @default(TRIALING) @map("subscription_status")
+  trialStartDate         DateTime           @default(now()) @map("trial_start_date")
+  trialEndDate           DateTime?          @map("trial_end_date")
+  trialActive            Boolean            @default(true) @map("trial_active")
+  subscriptionRenewalDate DateTime?         @map("subscription_renewal_date")
+
+  // Usage counters
+  smsUsageCount   Int @default(0) @map("sms_usage_count")
+  voiceUsageCount Int @default(0) @map("voice_usage_count")
+  aiUsageCount    Int @default(0) @map("ai_usage_count")
+
+  // Limits
+  smsTrialLimit  Int @default(100) @map("sms_trial_limit")
+  aiTrialLimit   Int @default(5) @map("ai_trial_limit")
+  aiMonthlyLimit Int @default(50) @map("ai_monthly_limit")
+
+  // General
   settings  Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users        User[]
-  customers    Customer[]
-  appointments Appointment[]
+  // Relations
+  users               User[]
+  customers           Customer[]
+  appointments        Appointment[]
+  reminderRules       ReminderRule[]
+  reminders           Reminder[]
+  messageLogs         MessageLog[]
+  templates           Template[]
+  subscriptionRecords SubscriptionRecord[]
+  aiUsageLogs         AIUsageLog[]
+  auditLogs           AuditLog[]
+  failedReminders     FailedReminder[]
 
   @@map("tenants")
 }
@@ -57,9 +119,11 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[]
 
   @@unique([tenantId, email])
+  @@index([tenantId])
   @@map("users")
 }
 
@@ -76,6 +140,7 @@ model Customer {
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   appointments Appointment[]
 
+  @@index([tenantId])
   @@map("customers")
 }
 
@@ -91,8 +156,170 @@ model Appointment {
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer  Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  reminders Reminder[]
 
+  @@index([tenantId])
+  @@index([status])
   @@map("appointments")
+}
+
+model ReminderRule {
+  id            String      @id @default(uuid()) @db.Uuid
+  tenantId      String      @map("tenant_id") @db.Uuid
+  name          String
+  channel       ChannelType @default(SMS)
+  templateId    String?     @map("template_id") @db.Uuid
+  offsetMinutes Int         @map("offset_minutes") // minutes before appointment
+  isActive      Boolean     @default(true) @map("is_active")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template  Template?  @relation(fields: [templateId], references: [id])
+  reminders Reminder[]
+
+  @@index([tenantId])
+  @@map("reminder_rules")
+}
+
+model Reminder {
+  id               String         @id @default(uuid()) @db.Uuid
+  tenantId         String         @map("tenant_id") @db.Uuid
+  appointmentId    String         @map("appointment_id") @db.Uuid
+  reminderRuleId   String?        @map("reminder_rule_id") @db.Uuid
+  channel          ChannelType    @default(SMS)
+  scheduledSendTime DateTime      @map("scheduled_send_time")
+  sentAt           DateTime?      @map("sent_at")
+  status           ReminderStatus @default(PENDING)
+  messageContent   String?        @map("message_content")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment    Appointment     @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  reminderRule   ReminderRule?   @relation(fields: [reminderRuleId], references: [id])
+  messageLogs    MessageLog[]
+  failedReminder FailedReminder?
+
+  @@index([tenantId])
+  @@index([scheduledSendTime])
+  @@index([status])
+  @@map("reminders")
+}
+
+model MessageLog {
+  id                String           @id @default(uuid()) @db.Uuid
+  tenantId          String           @map("tenant_id") @db.Uuid
+  reminderId        String?          @map("reminder_id") @db.Uuid
+  channel           ChannelType
+  direction         MessageDirection @default(OUTBOUND)
+  recipient         String
+  content           String?
+  providerMessageId String?          @map("provider_message_id")
+  providerStatus    String?          @map("provider_status")
+  cost              Float?
+  sentAt            DateTime?        @map("sent_at")
+  deliveredAt       DateTime?        @map("delivered_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reminder Reminder? @relation(fields: [reminderId], references: [id])
+
+  @@index([tenantId])
+  @@index([providerMessageId])
+  @@map("message_logs")
+}
+
+model Template {
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String      @map("tenant_id") @db.Uuid
+  name      String
+  channel   ChannelType @default(SMS)
+  subject   String?
+  body      String
+  variables Json        @default("[]") // list of variable names like ["customer_name", "appointment_time"]
+  isActive  Boolean     @default(true) @map("is_active")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reminderRules ReminderRule[]
+
+  @@index([tenantId])
+  @@map("templates")
+}
+
+model SubscriptionRecord {
+  id                  String             @id @default(uuid()) @db.Uuid
+  tenantId            String             @map("tenant_id") @db.Uuid
+  planType            PlanType           @map("plan_type")
+  status              SubscriptionStatus
+  startDate           DateTime           @map("start_date")
+  endDate             DateTime?          @map("end_date")
+  providerSubscriptionId String?         @map("provider_subscription_id")
+  amount              Float?
+  currency            String             @default("USD")
+  createdAt           DateTime           @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("subscription_records")
+}
+
+model AIUsageLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  feature    String   // e.g. "message_generation", "sentiment_analysis"
+  tokensUsed Int      @default(0) @map("tokens_used")
+  model      String?  // e.g. "gpt-4"
+  inputText  String?  @map("input_text")
+  outputText String?  @map("output_text")
+  costUsd    Float?   @map("cost_usd")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("ai_usage_logs")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   // e.g. "CREATE", "UPDATE", "DELETE"
+  entity     String   // e.g. "Appointment", "Template"
+  entityId   String   @map("entity_id")
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+model FailedReminder {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  reminderId  String   @unique @map("reminder_id") @db.Uuid
+  errorCode   String?  @map("error_code")
+  errorMessage String? @map("error_message")
+  retryCount  Int      @default(0) @map("retry_count")
+  lastRetryAt DateTime? @map("last_retry_at")
+  resolvedAt  DateTime? @map("resolved_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reminder Reminder @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("failed_reminders")
 }

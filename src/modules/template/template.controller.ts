@@ -8,29 +8,26 @@ import {
     Param,
     ParseUUIDPipe,
 } from '@nestjs/common';
-import { ReminderService } from './reminder.service';
-import {
-    CreateReminderRuleDto,
-    UpdateReminderRuleDto,
-} from './dto/reminder-rule.dto';
+import { TemplateService } from './template.service';
+import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto';
 import { CurrentUser } from '../../common/decorators';
 
-@Controller('reminder-rules')
-export class ReminderController {
-    constructor(private readonly reminderService: ReminderService) { }
+@Controller('templates')
+export class TemplateController {
+    constructor(private readonly templateService: TemplateService) { }
 
     @Post()
     create(
         @CurrentUser('tenantId') tenantId: string,
         @CurrentUser('userId') userId: string,
-        @Body() dto: CreateReminderRuleDto,
+        @Body() dto: CreateTemplateDto,
     ) {
-        return this.reminderService.createRule(tenantId, userId, dto);
+        return this.templateService.create(tenantId, userId, dto);
     }
 
     @Get()
     findAll(@CurrentUser('tenantId') tenantId: string) {
-        return this.reminderService.findAllRules(tenantId);
+        return this.templateService.findAll(tenantId);
     }
 
     @Get(':id')
@@ -38,7 +35,7 @@ export class ReminderController {
         @CurrentUser('tenantId') tenantId: string,
         @Param('id', ParseUUIDPipe) id: string,
     ) {
-        return this.reminderService.findOneRule(tenantId, id);
+        return this.templateService.findOne(tenantId, id);
     }
 
     @Put(':id')
@@ -46,9 +43,9 @@ export class ReminderController {
         @CurrentUser('tenantId') tenantId: string,
         @CurrentUser('userId') userId: string,
         @Param('id', ParseUUIDPipe) id: string,
-        @Body() dto: UpdateReminderRuleDto,
+        @Body() dto: UpdateTemplateDto,
     ) {
-        return this.reminderService.updateRule(tenantId, userId, id, dto);
+        return this.templateService.update(tenantId, userId, id, dto);
     }
 
     @Delete(':id')
@@ -57,6 +54,6 @@ export class ReminderController {
         @CurrentUser('userId') userId: string,
         @Param('id', ParseUUIDPipe) id: string,
     ) {
-        return this.reminderService.removeRule(tenantId, userId, id);
+        return this.templateService.remove(tenantId, userId, id);
     }
 }

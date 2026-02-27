@@ -16,11 +16,13 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 // Feature modules
+import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
 import { AppointmentModule } from './modules/appointment/appointment.module';
 import { ReminderModule } from './modules/reminder/reminder.module';
+import { TemplateModule } from './modules/template/template.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { AIModule } from './modules/ai/ai.module';
@@ -42,11 +44,13 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     PrismaModule,
 
     // Feature modules
+    AuditModule,
     AuthModule,
     TenantModule,
     UserModule,
     AppointmentModule,
     ReminderModule,
+    TemplateModule,
     MessagingModule,
     BillingModule,
     AIModule,
