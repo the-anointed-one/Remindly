@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ReminderSchedulerService } from '../reminder/reminder-scheduler.service';
 import { CreateAppointmentDto, UpdateAppointmentDto } from './dto/appointment.dto';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class AppointmentService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly auditService: AuditService,
+        private readonly reminderScheduler: ReminderSchedulerService,
     ) { }
 
     async create(tenantId: string, userId: string, dto: CreateAppointmentDto) {
@@ -39,7 +41,14 @@ export class AppointmentService {
         });
 
         this.logger.log(`Appointment "${appointment.title}" created`);
-        return appointment;
+
+        // Schedule reminders based on active rules
+        const reminders = await this.reminderScheduler.scheduleForAppointment(
+            appointment.id,
+            tenantId,
+        );
+
+        return { ...appointment, scheduledReminders: reminders.length };
     }
 
     async findAll(tenantId: string, page = 1, limit = 20) {
@@ -114,6 +123,12 @@ export class AppointmentService {
     async remove(tenantId: string, userId: string, id: string) {
         await this.findOne(tenantId, id); // ensure it exists + belongs to tenant
 
+        // Cancel pending reminders first
+        const cancelled = await this.reminderScheduler.cancelForAppointment(id);
+        if (cancelled > 0) {
+            this.logger.log(`Cancelled ${cancelled} pending reminders`);
+        }
+
         await this.prisma.appointment.delete({ where: { id } });
 
         await this.auditService.log({
@@ -124,6 +139,6 @@ export class AppointmentService {
             entityId: id,
         });
 
-        return { deleted: true };
+        return { deleted: true, cancelledReminders: cancelled };
     }
 }

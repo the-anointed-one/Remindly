@@ -24,4 +24,9 @@ export const envValidationSchema = Joi.object({
     TRIAL_DAILY_AI_LIMIT: Joi.number().default(2),
     HOURLY_SMS_RATE_LIMIT: Joi.number().default(20),
     AI_MONTHLY_LIMIT: Joi.number().default(50),
+
+    // Redis
+    REDIS_HOST: Joi.string().default('localhost'),
+    REDIS_PORT: Joi.number().default(6379),
+    REDIS_PASSWORD: Joi.string().allow('').default(''),
 });
