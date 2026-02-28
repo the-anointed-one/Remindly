@@ -29,4 +29,10 @@ export const envValidationSchema = Joi.object({
     REDIS_HOST: Joi.string().default('localhost'),
     REDIS_PORT: Joi.number().default(6379),
     REDIS_PASSWORD: Joi.string().allow('').default(''),
+
+    // Twilio
+    TWILIO_ACCOUNT_SID: Joi.string().allow('').default(''),
+    TWILIO_AUTH_TOKEN: Joi.string().allow('').default(''),
+    TWILIO_PHONE_NUMBER: Joi.string().allow('').default(''),
+    TWILIO_WEBHOOK_URL: Joi.string().allow('').default('http://localhost:3000/api/webhooks/twilio'),
 });

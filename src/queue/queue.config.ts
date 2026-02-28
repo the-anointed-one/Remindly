@@ -1,8 +1,8 @@
 import { ConnectionOptions } from 'bullmq';
 
 // ── Queue names ──────────────────────────────
-export const REMINDER_QUEUE = 'remindly:reminders';
-export const REMINDER_DLQ = 'remindly:reminders:dlq';
+export const REMINDER_QUEUE = 'remindly-reminders';
+export const REMINDER_DLQ = 'remindly-reminders-dlq';
 
 // ── Redis connection ─────────────────────────
 export function getRedisConnection(): ConnectionOptions {
