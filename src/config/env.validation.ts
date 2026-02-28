@@ -35,4 +35,12 @@ export const envValidationSchema = Joi.object({
     TWILIO_AUTH_TOKEN: Joi.string().allow('').default(''),
     TWILIO_PHONE_NUMBER: Joi.string().allow('').default(''),
     TWILIO_WEBHOOK_URL: Joi.string().allow('').default('http://localhost:3000/api/webhooks/twilio'),
+
+    // Paystack
+    PAYSTACK_SECRET_KEY: Joi.string().allow('').default(''),
+    PAYSTACK_PUBLIC_KEY: Joi.string().allow('').default(''),
+    PAYSTACK_WEBHOOK_SECRET: Joi.string().allow('').default(''),
+    PAYSTACK_SMS_PLAN_CODE: Joi.string().allow('').default(''),
+    PAYSTACK_SMS_VOICE_PLAN_CODE: Joi.string().allow('').default(''),
+    PAYSTACK_SMS_VOICE_AI_PLAN_CODE: Joi.string().allow('').default(''),
 });
