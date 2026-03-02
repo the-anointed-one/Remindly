@@ -43,4 +43,8 @@ export const envValidationSchema = Joi.object({
     PAYSTACK_SMS_PLAN_CODE: Joi.string().allow('').default(''),
     PAYSTACK_SMS_VOICE_PLAN_CODE: Joi.string().allow('').default(''),
     PAYSTACK_SMS_VOICE_AI_PLAN_CODE: Joi.string().allow('').default(''),
+
+    // OpenAI
+    OPENAI_API_KEY: Joi.string().allow('').default(''),
+    OPENAI_MODEL: Joi.string().default('gpt-4o-mini'),
 });
