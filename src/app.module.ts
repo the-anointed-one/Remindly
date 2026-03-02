@@ -1,6 +1,7 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 // Config
 import { envValidationSchema } from './config/env.validation';
@@ -29,6 +30,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { AIModule } from './modules/ai/ai.module';
 import { WebhookModule } from './modules/webhook/webhook.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -58,6 +60,10 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     AIModule,
     WebhookModule,
     AnalyticsModule,
+    HealthModule,
+
+    // Rate limiting: 100 requests per 60 seconds per IP
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
   ],
   providers: [
     // Global exception filter
@@ -79,6 +85,11 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
+    },
+    // Global rate limiting guard
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })

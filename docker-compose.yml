@@ -1,0 +1,123 @@
+# ────────────────────────────────────────────────────
+# Attendlyx — Docker Compose (Production Stack)
+# ────────────────────────────────────────────────────
+# SCALABILITY STRATEGY:
+#
+# 1. API:      Stateless, scale horizontally: `docker compose up --scale api=3`
+# 2. Worker:   Independent process, scale: `docker compose up --scale worker=5`
+# 3. Postgres: Single primary; add read replicas for read scaling
+# 4. Redis:    Single instance; upgrade to Redis Cluster for HA
+# 5. Frontend: Static/SSR, scale behind CDN/LB
+#
+# MONITORING HOOKS:
+# - Health:  GET /api/health       (full check: DB + memory + disk)
+# - Live:    GET /api/health/live   (Kubernetes liveness probe)
+# - Ready:   GET /api/health/ready  (Kubernetes readiness probe)
+# ────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ─────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: remindly
+      POSTGRES_USER: remindly
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-REDACTED_SECRET}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U remindly" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ──────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── API Server ─────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://remindly:${DB_PASSWORD:-REDACTED_SECRET}@postgres:5432/remindly
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY}
+      PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY}
+      PAYSTACK_WEBHOOK_SECRET: ${PAYSTACK_WEBHOOK_SECRET}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health/live" ]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+  # ── Reminder Worker ────────────────────────────
+  # Scale independently: docker compose up --scale worker=3
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: [ "node", "dist/workers/reminder.worker.js" ]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://remindly:${DB_PASSWORD:-REDACTED_SECRET}@postgres:5432/remindly
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Frontend ───────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:3000/api}
+
+volumes:
+  pgdata:
+  redisdata:

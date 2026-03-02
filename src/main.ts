@@ -1,39 +1,83 @@
+/**
+ * Attendlyx — Application Entry Point (Production-Ready)
+ *
+ * SCALABILITY STRATEGY:
+ * ─────────────────────
+ * 1. HORIZONTAL SCALING: The API is stateless (JWT auth, no sessions).
+ *    Run multiple instances behind a load balancer (nginx, ALB, etc).
+ *
+ * 2. WORKER SCALING: The BullMQ reminder worker is a separate process
+ *    (src/workers/reminder.worker.ts). Scale workers independently from
+ *    the API. Each worker processes jobs with concurrency=5 by default.
+ *    Scale by running more worker processes: `npm run worker:reminder`.
+ *
+ * 3. DATABASE: PostgreSQL handles read replicas natively. Configure
+ *    Prisma with `replicaRead` for read scaling when needed.
+ *
+ * 4. REDIS: Used for BullMQ job queues. Supports Redis Cluster for HA.
+ *    Configure via REDIS_HOST/REDIS_PORT/REDIS_PASSWORD.
+ *
+ * 5. RATE LIMITING: Global (100 req/60s per IP) + per-route throttling.
+ *    Uses in-memory store by default; switch to Redis store in multi-instance.
+ *
+ * 6. GRACEFUL SHUTDOWN: SIGTERM/SIGINT handlers ensure in-flight requests
+ *    complete, database connections close, and BullMQ workers drain.
+ */
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import helmet from 'helmet';
+import compression from 'compression';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+    // Production: only error, warn, log. Dev: all levels.
+    logger: process.env.NODE_ENV === 'production'
+      ? ['error', 'warn', 'log']
+      : ['error', 'warn', 'log', 'debug', 'verbose'],
   });
 
-  // Global prefix
+  // ── Security ────────────────────────────────
+  app.use(helmet());           // Security headers (XSS, CSP, etc.)
+  app.use(compression());      // Gzip/Brotli compression
+
+  // ── Global Prefix ───────────────────────────
   app.setGlobalPrefix('api');
 
-  // Validation pipe for DTOs
+  // ── Validation ──────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
+      whitelist: true,          // Strip unknown properties
+      forbidNonWhitelisted: true, // Reject unknown properties
+      transform: true,          // Auto-transform payloads to DTOs
     }),
   );
 
-  // CORS
+  // ── CORS ────────────────────────────────────
+  const configService = app.get(ConfigService);
+  const allowedOrigins = configService.get<string>('CORS_ORIGINS', 'http://localhost:3001');
+
   app.enableCors({
-    origin: true,
+    origin: allowedOrigins.split(',').map((o) => o.trim()),
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
   });
 
-  // Port
-  const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT', 3000);
+  // ── Graceful Shutdown ───────────────────────
+  app.enableShutdownHooks();
 
+  // ── Start ───────────────────────────────────
+  const port = configService.get<number>('PORT', 3000);
   await app.listen(port);
-  logger.log(`🚀 Remindly API listening on port ${port}`);
+
+  logger.log(`🚀 Attendlyx API listening on port ${port}`);
+  logger.log(`📋 Environment: ${configService.get('NODE_ENV', 'development')}`);
+  logger.log(`🔒 CORS origins: ${allowedOrigins}`);
 }
 
 bootstrap();
