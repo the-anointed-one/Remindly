@@ -1,0 +1,119 @@
+.nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(10, 14, 26, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+}
+
+.inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text-primary) !important;
+}
+
+.logoIcon {
+    font-size: 24px;
+}
+
+.logoText {
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.links {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+}
+
+.links a {
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    transition: color var(--transition-fast);
+}
+
+.links a:hover {
+    color: var(--text-primary);
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: 16px;
+}
+
+.burger {
+    display: none;
+    flex-direction: column;
+    gap: 5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+}
+
+.burger span {
+    display: block;
+    width: 24px;
+    height: 2px;
+    background: var(--text-primary);
+    border-radius: 2px;
+    transition: all var(--transition-fast);
+}
+
+@media (max-width: 768px) {
+    .burger {
+        display: flex;
+    }
+
+    .links {
+        position: fixed;
+        top: 72px;
+        left: 0;
+        right: 0;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+        flex-direction: column;
+        padding: 24px;
+        gap: 16px;
+        transform: translateY(-120%);
+        transition: transform var(--transition-base);
+    }
+
+    .links.open {
+        transform: translateY(0);
+    }
+
+    .actions {
+        margin-left: 0;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .actions a {
+        width: 100%;
+        text-align: center;
+    }
+}
