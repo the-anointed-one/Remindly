@@ -1,53 +1,93 @@
 import {
-    IsString,
-    IsUUID,
-    IsDateString,
-    IsOptional,
-    IsInt,
-    Min,
-    IsEnum,
+  IsString,
+  IsUUID,
+  IsDateString,
+  IsOptional,
+  IsInt,
+  Min,
+  IsEnum,
 } from 'class-validator';
-import { AppointmentStatus } from '@prisma/client';
+import { AppointmentStatus, ChannelType, TargetType } from '@prisma/client';
+import { Type } from 'class-transformer';
+import { ValidateNested } from 'class-validator';
+
+export class ReminderConfigDto {
+  @IsEnum(ChannelType)
+  channel: ChannelType;
+
+  @IsString()
+  template: string;
+}
 
 export class CreateAppointmentDto {
-    @IsUUID()
-    customerId: string;
+  @IsOptional()
+  @IsUUID()
+  customerId?: string;
 
-    @IsString()
-    title: string;
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
 
-    @IsDateString()
-    scheduledAt: string;
+  @IsOptional()
+  @IsUUID()
+  campaignId?: string;
 
-    @IsOptional()
-    @IsInt()
-    @Min(5)
-    durationMinutes?: number;
+  @IsOptional()
+  @IsUUID()
+  audienceSegmentId?: string;
 
-    @IsOptional()
-    @IsString()
-    notes?: string;
+  @IsString()
+  title: string;
+
+  @IsDateString()
+  scheduledAt: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(5)
+  durationMinutes?: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsEnum(TargetType)
+  targetType?: TargetType;
+
+  @IsOptional()
+  @IsUUID()
+  targetId?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ReminderConfigDto)
+  reminderConfig?: ReminderConfigDto;
 }
 
 export class UpdateAppointmentDto {
-    @IsOptional()
-    @IsString()
-    title?: string;
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
 
-    @IsOptional()
-    @IsDateString()
-    scheduledAt?: string;
+  @IsOptional()
+  @IsString()
+  title?: string;
 
-    @IsOptional()
-    @IsInt()
-    @Min(5)
-    durationMinutes?: number;
+  @IsOptional()
+  @IsDateString()
+  scheduledAt?: string;
 
-    @IsOptional()
-    @IsEnum(AppointmentStatus)
-    status?: AppointmentStatus;
+  @IsOptional()
+  @IsInt()
+  @Min(5)
+  durationMinutes?: number;
 
-    @IsOptional()
-    @IsString()
-    notes?: string;
+  @IsOptional()
+  @IsEnum(AppointmentStatus)
+  status?: AppointmentStatus;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }

@@ -1,16 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import api from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import Link from 'next/link';
+import Icon from '@/components/ui/Icon';
+import { faLock, faExclamationTriangle, faWandMagicSparkles, faChartLine, faPalette, faBullseye, faClipboard, faRobot } from '@fortawesome/free-solid-svg-icons';
 
 type AITab = 'generate' | 'improve' | 'tone' | 'optimize';
 
 export default function AIPage() {
-    const { plan, usage, refreshUsage } = useAuth();
+    const { plan, usage, refreshUsage, loading: authLoading } = useAuth();
     const [tab, setTab] = useState<AITab>('generate');
     const [result, setResult] = useState<string>('');
+    const isMounted = useRef(true);
+
+    useEffect(() => {
+        return () => { isMounted.current = false; };
+    }, []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -21,28 +28,45 @@ export default function AIPage() {
     const [improvementGoal, setImprovementGoal] = useState('');
     const [targetTone, setTargetTone] = useState('casual');
 
+    const effectiveUsage = usage || { ai: { used: 0, limit: 0 } };
     const notEligible = plan !== 'SMS_VOICE_AI';
-    const limitReached = usage.ai.used >= usage.ai.limit;
+    const limitReached = (effectiveUsage.ai?.used ?? 0) >= (effectiveUsage.ai?.limit ?? 0);
 
     const callAI = async (endpoint: string, body: object) => {
+        if (!isMounted.current) return;
         setError('');
         setResult('');
         setLoading(true);
         try {
             const { data } = await api.post(`/ai/${endpoint}`, body);
-            setResult(data.text || data.improved || data.rewritten || data.optimized || '');
-            refreshUsage();
+            if (isMounted.current) {
+                setResult(data.text || data.improved || data.rewritten || data.optimized || '');
+            }
+            await refreshUsage();
         } catch (err: any) {
-            setError(err.response?.data?.message || 'AI request failed');
-        } finally { setLoading(false); }
+            if (isMounted.current) {
+                setError(err.response?.data?.message || 'AI request failed');
+            }
+        } finally {
+            if (isMounted.current) setLoading(false);
+        }
     };
+
+    if (authLoading) {
+        return (
+            <div>
+                <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 32 }}>AI Assistant</h1>
+                <p style={{ color: 'var(--text-muted)' }}>Loading user & usage information…</p>
+            </div>
+        );
+    }
 
     if (notEligible) {
         return (
             <div>
                 <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 32 }}>AI Assistant</h1>
-                <div className="card" style={{ textAlign: 'center', padding: 64 }}>
-                    <div style={{ fontSize: 64, marginBottom: 16 }}>🔒</div>
+                <div className="card" style={{ textAlign: 'center', padding: 'clamp(24px, 5vw, 64px)' }}>
+                    <div style={{ fontSize: 64, marginBottom: 16, color: 'var(--text-muted)' }}><Icon icon={faLock} /></div>
                     <h2 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8 }}>AI Requires Tier 3</h2>
                     <p style={{ color: 'var(--text-secondary)', marginBottom: 24, maxWidth: 400, margin: '0 auto 24px' }}>
                         AI-powered template generation, improvement, and optimization is available on the SMS + Voice + AI plan.
@@ -57,36 +81,36 @@ export default function AIPage() {
         return (
             <div>
                 <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 32 }}>AI Assistant</h1>
-                <div className="card" style={{ textAlign: 'center', padding: 64 }}>
-                    <div style={{ fontSize: 64, marginBottom: 16 }}>⚠️</div>
+                <div className="card" style={{ textAlign: 'center', padding: 'clamp(24px, 5vw, 64px)' }}>
+                    <div style={{ fontSize: 64, marginBottom: 16, color: 'var(--text-muted)' }}><Icon icon={faExclamationTriangle} /></div>
                     <h2 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8 }}>AI Limit Reached</h2>
                     <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>
-                        You&apos;ve used {usage.ai.used}/{usage.ai.limit} AI requests. Resets on your next billing cycle.
+                        You&apos;ve used {effectiveUsage.ai?.used ?? 0}/{effectiveUsage.ai?.limit ?? 0} AI requests. Resets on your next billing cycle.
                     </p>
                 </div>
             </div>
         );
     }
 
-    const tabs: { key: AITab; label: string; icon: string }[] = [
-        { key: 'generate', label: 'Generate', icon: '✨' },
-        { key: 'improve', label: 'Improve', icon: '📈' },
-        { key: 'tone', label: 'Change Tone', icon: '🎨' },
-        { key: 'optimize', label: 'Optimize', icon: '🎯' },
+    const tabs: { key: AITab; label: string; icon: any }[] = [
+        { key: 'generate', label: 'Generate', icon: faWandMagicSparkles },
+        { key: 'improve', label: 'Improve', icon: faChartLine },
+        { key: 'tone', label: 'Change Tone', icon: faPalette },
+        { key: 'optimize', label: 'Optimize', icon: faBullseye },
     ];
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4" style={{ marginBottom: 32 }}>
                 <h1 style={{ fontSize: 28, fontWeight: 800 }}>AI Assistant</h1>
-                <span className="badge badge-accent">{usage.ai.limit - usage.ai.used} requests remaining</span>
+                <span className="badge badge-accent">{(effectiveUsage.ai?.limit ?? 0) - (effectiveUsage.ai?.used ?? 0)} requests remaining</span>
             </div>
 
             {/* Tabs */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
                 {tabs.map((t) => (
                     <button key={t.key} className={`btn ${tab === t.key ? 'btn-primary' : 'btn-ghost'} btn-sm`} onClick={() => { setTab(t.key); setResult(''); setError(''); }}>
-                        {t.icon} {t.label}
+                        <Icon icon={t.icon} className="mr-1.5" /> {t.label}
                     </button>
                 ))}
             </div>
@@ -116,7 +140,7 @@ export default function AIPage() {
                                     <option value="professional">Professional</option><option value="casual">Casual</option><option value="friendly">Friendly</option><option value="formal">Formal</option><option value="luxury">Luxury</option>
                                 </select>
                             </div>
-                            <button className="btn btn-primary" onClick={() => callAI('generate-template', genForm)} disabled={loading}>{loading ? 'Generating...' : 'Generate ✨'}</button>
+                            <button className="btn btn-primary" onClick={() => callAI('generate-template', genForm)} disabled={loading}>{loading ? 'Generating...' : <><Icon icon={faWandMagicSparkles} className="mr-1.5" /> Generate</>}</button>
                         </div>
                     )}
 
@@ -146,7 +170,7 @@ export default function AIPage() {
                                 if (tab === 'tone') callAI('change-tone', { currentTemplate: templateInput, targetTone });
                                 if (tab === 'optimize') callAI('optimize-confirmation', { currentTemplate: templateInput, channel: 'SMS' });
                             }}>
-                                {loading ? 'Processing...' : tab === 'improve' ? 'Improve 📈' : tab === 'tone' ? 'Change Tone 🎨' : 'Optimize 🎯'}
+                                {loading ? 'Processing...' : tab === 'improve' ? <><Icon icon={faChartLine} className="mr-1.5" /> Improve</> : tab === 'tone' ? <><Icon icon={faPalette} className="mr-1.5" /> Change Tone</> : <><Icon icon={faBullseye} className="mr-1.5" /> Optimize</>}
                             </button>
                         </div>
                     )}
@@ -159,11 +183,13 @@ export default function AIPage() {
                     {result ? (
                         <div>
                             <div style={{ background: 'var(--bg-input)', borderRadius: 'var(--radius-md)', padding: 20, fontSize: 14, lineHeight: 1.7, color: 'var(--text-primary)', marginBottom: 16 }}>{result}</div>
-                            <button className="btn btn-secondary btn-sm" onClick={() => navigator.clipboard.writeText(result)}>📋 Copy to Clipboard</button>
+                            <button className="btn btn-secondary btn-sm" onClick={() => navigator.clipboard.writeText(result)}>
+                                <Icon icon={faClipboard} className="mr-1.5" /> Copy to Clipboard
+                            </button>
                         </div>
                     ) : (
-                        <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
-                            <div style={{ fontSize: 40, marginBottom: 12 }}>🤖</div>
+                        <div style={{ textAlign: 'center', padding: 'clamp(20px, 4vw, 48px)', color: 'var(--text-muted)' }}>
+                            <div style={{ fontSize: 40, marginBottom: 12, color: 'var(--text-muted)' }}><Icon icon={faRobot} /></div>
                             <p>AI-generated content will appear here</p>
                         </div>
                     )}

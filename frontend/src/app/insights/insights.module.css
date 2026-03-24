@@ -1,0 +1,192 @@
+/* ─────────────────────────────────────────────────────────────
+   Shared: hero eyebrow label
+───────────────────────────────────────────────────────────── */
+
+.eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Index — hero section
+───────────────────────────────────────────────────────────── */
+
+.heroSection {
+    padding: 72px 0 56px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Index — featured post card
+───────────────────────────────────────────────────────────── */
+
+.featuredGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    text-decoration: none;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    transition: border-color var(--transition-base);
+}
+.featuredGrid:hover { border-color: var(--border-light); }
+
+.featuredImgWrap {
+    position: relative;
+    min-height: 320px;
+}
+
+.featuredBody {
+    padding: 40px 40px 40px 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.featuredMeta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+    row-gap: 4px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Index — post grid
+───────────────────────────────────────────────────────────── */
+
+.postGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+}
+
+.postCard {
+    text-decoration: none;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: border-color var(--transition-base), transform var(--transition-base);
+}
+.postCard:hover {
+    border-color: var(--border-light);
+    transform: translateY(-3px);
+}
+
+.postImgWrap {
+    position: relative;
+    height: 180px;
+    flex-shrink: 0;
+    background: var(--bg-app);
+    overflow: hidden;
+}
+
+.postBody {
+    padding: 20px 20px 24px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Article — two-column layout (content + sidebar)
+───────────────────────────────────────────────────────────── */
+
+.contentGrid {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 56px;
+    padding: 56px 24px 80px;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Article — hero metadata row
+───────────────────────────────────────────────────────────── */
+
+.heroMeta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.55);
+    flex-wrap: wrap;
+    row-gap: 4px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Article — inline CTA block (inside renderBlock)
+───────────────────────────────────────────────────────────── */
+
+.ctaBlock {
+    margin: 48px 0;
+    padding: 40px 36px;
+    background: var(--bg-card);
+    border: 1px solid rgba(0, 169, 157, 0.25);
+    border-radius: var(--radius-xl);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Responsive
+───────────────────────────────────────────────────────────── */
+
+@media (max-width: 1024px) {
+    .postGrid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 900px) {
+    .contentGrid {
+        grid-template-columns: 1fr;
+        gap: 40px;
+        padding: 40px 24px 64px;
+    }
+}
+
+@media (max-width: 768px) {
+    .heroSection {
+        padding: 48px 0 40px;
+    }
+
+    .featuredGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .featuredImgWrap {
+        min-height: 220px;
+    }
+
+    .featuredBody {
+        padding: 24px;
+    }
+
+    .ctaBlock {
+        padding: 32px 20px;
+    }
+}
+
+@media (max-width: 640px) {
+    .postGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .contentGrid {
+        padding: 32px 16px 56px;
+    }
+}

@@ -4,10 +4,10 @@ import { CurrentUser } from '../../common/decorators';
 
 @Controller('webhooks')
 export class WebhookController {
-    constructor(private readonly webhookService: WebhookService) { }
+  constructor(private readonly webhookService: WebhookService) {}
 
-    @Get()
-    findAll(@CurrentUser('tenantId') tenantId: string) {
-        return this.webhookService.findAll(tenantId);
-    }
+  @Get()
+  findAll(@CurrentUser('tenantId') tenantId: string) {
+    return this.webhookService.findAll(tenantId);
+  }
 }

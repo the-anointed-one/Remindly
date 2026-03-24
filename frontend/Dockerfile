@@ -1,5 +1,5 @@
 # ────────────────────────────────────────────────
-# Attendlyx Frontend — Production Dockerfile
+# Meetora Frontend — Production Dockerfile
 # ────────────────────────────────────────────────
 
 FROM node:20-alpine AS deps

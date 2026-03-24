@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import Link from 'next/link';
+import Icon from '@/components/ui/Icon';
+import { faComment, faPhone, faRobot } from '@fortawesome/free-solid-svg-icons';
 
 interface BillingInfo {
     plan: string;
@@ -75,9 +77,9 @@ export default function BillingPage() {
             <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Usage This Period</h2>
             <div className="grid-3" style={{ marginBottom: 32 }}>
                 {[
-                    { label: 'SMS', used: billing?.usage.sms.used || 0, limit: billing?.usage.sms.limit || 100, icon: '💬' },
-                    { label: 'Voice Calls', used: billing?.usage.voice.used || 0, limit: null, icon: '📞' },
-                    { label: 'AI Requests', used: billing?.usage.ai.used || 0, limit: billing?.usage.ai.limit || 5, icon: '🤖' },
+                    { label: 'SMS', used: billing?.usage?.sms?.used || 0, limit: billing?.usage?.sms?.limit || 100, icon: <Icon icon={faComment} className="text-primary" /> },
+                    { label: 'Voice Calls', used: billing?.usage?.voice?.used || 0, limit: null, icon: <Icon icon={faPhone} className="text-accent-cta" /> },
+                    { label: 'AI Requests', used: billing?.usage?.ai?.used || 0, limit: billing?.usage?.ai?.limit || 5, icon: <Icon icon={faRobot} className="text-primary" /> },
                 ].map((u) => {
                     const pct = u.limit ? Math.min(100, (u.used / u.limit) * 100) : 0;
                     return (
@@ -103,7 +105,7 @@ export default function BillingPage() {
                 {plans.map((p) => {
                     const isCurrent = p.code === currentPlan;
                     return (
-                        <div key={p.code} className="card" style={{ border: isCurrent ? '2px solid var(--accent-primary)' : undefined }}>
+                        <div key={p.code} className="card" style={{ border: isCurrent ? '2px solid var(--primary)' : undefined }}>
                             <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>{p.name}</h3>
                             <div style={{ fontSize: 24, fontWeight: 800, marginBottom: 16 }}>{p.price}</div>
                             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>

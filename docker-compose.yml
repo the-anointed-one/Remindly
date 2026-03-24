@@ -1,5 +1,5 @@
 # ────────────────────────────────────────────────────
-# Attendlyx — Docker Compose (Production Stack)
+# Meetora — Docker Compose (Production Stack)
 # ────────────────────────────────────────────────────
 # SCALABILITY STRATEGY:
 #
@@ -54,6 +54,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -71,8 +74,24 @@ services:
       PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY}
       PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY}
       PAYSTACK_WEBHOOK_SECRET: ${PAYSTACK_WEBHOOK_SECRET}
+      PAYSTACK_CURRENCY: ${PAYSTACK_CURRENCY}
+      PAYSTACK_SMS_PLAN_CODE: ${PAYSTACK_SMS_PLAN_CODE}
+      PAYSTACK_SMS_VOICE_PLAN_CODE: ${PAYSTACK_SMS_VOICE_PLAN_CODE}
+      PAYSTACK_SMS_VOICE_AI_PLAN_CODE: ${PAYSTACK_SMS_VOICE_AI_PLAN_CODE}
+      PAYSTACK_CALLBACK_URL: ${PAYSTACK_CALLBACK_URL}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
+      TWILIO_WEBHOOK_URL: ${TWILIO_WEBHOOK_URL}
+      GOOGLE_REVIEWS_REDIRECT_URI: ${GOOGLE_REVIEWS_REDIRECT_URI}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
+      GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI}
+      OUTLOOK_REDIRECT_URI: ${OUTLOOK_REDIRECT_URI}
+      API_BASE_URL: ${API_BASE_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL}
+      X_QA_BYPASS_TOKEN: ${X_QA_BYPASS_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,13 +105,20 @@ services:
       retries: 3
 
   # ── Reminder Worker ────────────────────────────
-  # Scale independently: docker compose up --scale worker=3
+  # For local dev scaling: docker compose up --scale worker=2
+  # For Swarm deployment: deploy.replicas is used automatically
   worker:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     command: [ "node", "dist/workers/reminder.worker.js" ]
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://remindly:${DB_PASSWORD:-REDACTED_SECRET}@postgres:5432/remindly
@@ -101,22 +127,67 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
       TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      WORKER_COUNT: ${WORKER_COUNT:-2}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep node | grep reminder.worker.js || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Campaign Worker ────────────────────────────
+  # For local dev scaling: docker compose up --scale campaign-worker=2
+  # For Swarm deployment: deploy.replicas is used automatically
+  campaign-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: [ "node", "dist/workers/campaign.worker.js" ]
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://remindly:${DB_PASSWORD:-REDACTED_SECRET}@postgres:5432/remindly
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      WORKER_COUNT: ${WORKER_COUNT:-2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep node | grep campaign.worker.js || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # ── Frontend ───────────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
     restart: unless-stopped
     ports:
       - "3001:3001"
     environment:
-      NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:3000/api}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
 
 volumes:
   pgdata:

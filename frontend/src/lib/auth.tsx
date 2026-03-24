@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import api from './api';
 
@@ -16,6 +16,7 @@ interface User {
 interface UsageInfo {
     sms: { used: number; limit: number };
     voice: { used: number };
+    whatsapp: { used: number; limit: number };
     ai: { used: number; limit: number };
 }
 
@@ -34,9 +35,17 @@ interface AuthContextType extends AuthState {
     register: (data: { tenantName: string; email: string; password: string; firstName?: string; lastName?: string }) => Promise<void>;
     logout: () => void;
     refreshUsage: () => Promise<void>;
+    refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
+
+const DEFAULT_USAGE: UsageInfo = {
+    sms: { used: 0, limit: 100 },
+    voice: { used: 0 },
+    whatsapp: { used: 0, limit: 100 },
+    ai: { used: 0, limit: 5 },
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const router = useRouter();
@@ -45,87 +54,117 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading: true,
         plan: 'SMS',
         subscriptionStatus: 'TRIALING',
-        trialActive: true,
-        trialDaysRemaining: 14,
-        usage: { sms: { used: 0, limit: 100 }, voice: { used: 0 }, ai: { used: 0, limit: 5 } },
+        trialActive: false,
+        trialDaysRemaining: 0,
+        usage: DEFAULT_USAGE,
     });
 
+    const isMounted = useRef(true);
+
     const fetchProfile = useCallback(async () => {
+        if (!isMounted.current) return;
         try {
             const token = localStorage.getItem('accessToken');
             if (!token) {
-                setState((s) => ({ ...s, loading: false, user: null }));
+                if (isMounted.current) setState((s) => ({ ...s, loading: false, user: null }));
                 return;
             }
 
             const [userRes, billingRes] = await Promise.all([
-                api.get('/users').catch(() => null),
+                api.get('/users/me').catch(() => null),
                 api.get('/billing').catch(() => null),
             ]);
 
-            const users = userRes?.data;
+            const user = userRes?.data;
             const billing = billingRes?.data;
-            const user = Array.isArray(users) ? users[0] : users;
 
-            setState((s) => ({
-                ...s,
-                loading: false,
-                user: user || null,
-                plan: billing?.plan || 'SMS',
-                subscriptionStatus: billing?.status || 'TRIALING',
-                trialActive: billing?.trial?.active ?? true,
-                trialDaysRemaining: billing?.trial?.daysRemaining ?? 14,
-                usage: billing?.usage || s.usage,
-            }));
+            if (isMounted.current) {
+                setState((s) => ({
+                    ...s,
+                    loading: false,
+                    user: user || null,
+                    plan: billing?.plan || 'SMS',
+                    subscriptionStatus: billing?.status || 'TRIALING',
+                    trialActive: billing?.trial?.active ?? false,
+                    trialDaysRemaining: billing?.trial?.daysRemaining ?? 0,
+                    usage: billing?.usage || s.usage,
+                }));
+            }
         } catch {
-            setState((s) => ({ ...s, loading: false, user: null }));
+            if (isMounted.current) {
+                setState((s) => ({ ...s, loading: false, user: null }));
+            }
         }
     }, []);
 
     useEffect(() => {
+        isMounted.current = true;
         fetchProfile();
+
+        return () => {
+            isMounted.current = false;
+        };
     }, [fetchProfile]);
 
     const login = async (email: string, password: string) => {
         const { data } = await api.post('/auth/login', { email, password });
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
+
+        // Fetch billing to decide where to redirect
+        const billing = await api.get('/billing').catch(() => null);
         await fetchProfile();
-        router.push('/dashboard');
+
+        const status = billing?.data?.status;
+        const active = billing?.data?.trial?.active;
+
+        // If no active trial and not a paying subscriber → send to checkout
+        if (status === 'TRIALING' && !active) {
+            router.push('/onboarding/plan');
+        } else {
+            router.push('/dashboard');
+        }
     };
 
     const register = async (regData: { tenantName: string; email: string; password: string; firstName?: string; lastName?: string }) => {
         const { data } = await api.post('/auth/register', regData);
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
-        await fetchProfile();
-        router.push('/dashboard');
+        // New users always start at plan selection — trial begins only after card
+        fetchProfile().catch(() => { });
+        router.push('/onboarding/plan');
     };
 
     const logout = () => {
         api.post('/auth/logout').catch(() => { });
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
-        setState((s) => ({ ...s, user: null }));
+        setState((s) => ({ ...s, user: null, loading: false }));
         router.push('/login');
     };
 
     const refreshUsage = async () => {
         try {
             const { data } = await api.get('/billing');
-            setState((s) => ({
-                ...s,
-                plan: data.plan,
-                subscriptionStatus: data.status,
-                trialActive: data.trial?.active ?? false,
-                trialDaysRemaining: data.trial?.daysRemaining ?? 0,
-                usage: data.usage || s.usage,
-            }));
+            if (isMounted.current) {
+                setState((s) => ({
+                    ...s,
+                    plan: data.plan,
+                    subscriptionStatus: data.status,
+                    trialActive: data.trial?.active ?? false,
+                    trialDaysRemaining: data.trial?.daysRemaining ?? 0,
+                    usage: data.usage || s.usage,
+                }));
+            }
         } catch { }
     };
 
+    const refreshProfile = async () => {
+        await fetchProfile();
+    };
+
     return (
-        <AuthContext.Provider value={{ ...state, login, register, logout, refreshUsage }}>
+        <AuthContext.Provider value={{ ...state, login, register, logout, refreshUsage, refreshProfile }}>
             {children}
         </AuthContext.Provider>
     );

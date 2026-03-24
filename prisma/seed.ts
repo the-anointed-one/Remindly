@@ -1,12 +1,12 @@
 /**
- * Attendlyx — Database Seed Script
+ * Meetora — Database Seed Script
  *
- * Creates demo data for development and staging environments:
- * - 1 tenant with trial active
- * - 1 admin user (admin@demo.com / REDACTED_PASSWORD)
- * - 3 sample appointments
- * - 2 reminder rules
- * - 2 templates
+ * Creates realistic onboarding data:
+ * - 1 tenant
+ * - 1 admin user
+ * - 1 contact with real details
+ * - 1 welcome event in 7 days
+ * - 1 SMS reminder rule (1h before)
  *
  * Usage:  npx ts-node prisma/seed.ts
  *    or:  npm run seed
@@ -18,122 +18,90 @@ import * as bcrypt from 'bcrypt';
 const prisma = new PrismaClient();
 
 async function main() {
-    console.log('🌱 Seeding database...');
+  console.log('🌱 Seeding database with onboarding data...');
 
-    // ── Tenant ──────────────────────────────────
-    const tenant = await prisma.tenant.upsert({
-        where: { slug: 'demo-clinic' },
-        update: {},
-        create: {
-            name: 'Demo Dental Clinic',
-            slug: 'demo-clinic',
-            planType: 'SMS_VOICE_AI' as any,
-            subscriptionStatus: 'TRIALING' as any,
-            trialActive: true,
-            trialEndDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
-            smsMonthlyLimit: 500,
-            smsUsageCount: 12,
-            voiceUsageCount: 3,
-            aiUsageCount: 1,
-            aiTrialLimit: 5,
-            aiMonthlyLimit: 50,
-        },
-    });
-    console.log(`  ✓ Tenant: ${tenant.name} (${tenant.id})`);
+  // ── Tenant ──────────────────────────────────
+  const tenant = await prisma.tenant.upsert({
+    where: { slug: 'meetora-onboarding' },
+    update: {},
+    create: {
+      name: 'Meetora Onboarding',
+      slug: 'meetora-onboarding',
+      planType: 'SMS_VOICE_AI' as any,
+      subscriptionStatus: 'ACTIVE' as any,
+      trialActive: false,
+      aiMonthlyLimit: 100,
+      smsTrialLimit: 1000,
+    },
+  });
+  console.log(`  ✓ Tenant: ${tenant.name}`);
 
-    // ── Admin User ──────────────────────────────
-    const hashedPassword = await bcrypt.hash('REDACTED_PASSWORD', 10);
-    const user = await prisma.user.upsert({
-        where: { email: 'admin@demo.com' },
-        update: {},
-        create: {
-            email: 'admin@demo.com',
-            password: hashedPassword,
-            firstName: 'Admin',
-            lastName: 'User',
-            role: 'ADMIN',
-            tenantId: tenant.id,
-        },
-    });
-    console.log(`  ✓ User: ${user.email} (password: REDACTED_PASSWORD)`);
+  // ── Admin User ──────────────────────────────
+  const hashedPassword = await bcrypt.hash('Meetora2026!', 10);
+  const user = await prisma.user.upsert({
+    where: { tenantId_email: { email: 'admin@meetora.com', tenantId: tenant.id } },
+    update: {},
+    create: {
+      email: 'admin@meetora.com',
+      passwordHash: hashedPassword,
+      firstName: 'Onboarding',
+      lastName: 'Admin',
+      role: 'ADMIN',
+      tenantId: tenant.id,
+    },
+  });
+  console.log(`  ✓ User: ${user.email}`);
 
-    // ── Customers ───────────────────────────────
-    const customers = await Promise.all(
-        [
-            { firstName: 'John', lastName: 'Doe', email: 'john@example.com', phone: '+2348012345678' },
-            { firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', phone: '+2348098765432' },
-            { firstName: 'Mike', lastName: 'Johnson', email: 'mike@example.com', phone: '+2348055555555' },
-        ].map((c) =>
-            prisma.customer.upsert({
-                where: { email_tenantId: { email: c.email, tenantId: tenant.id } },
-                update: {},
-                create: { ...c, tenantId: tenant.id },
-            }),
-        ),
-    );
-    console.log(`  ✓ Customers: ${customers.length} created`);
+  // ── Contact ─────────────────────────────────
+  const contact = await prisma.contact.upsert({
+    where: { tenantId_email: { email: 'onboarding@example.com', tenantId: tenant.id } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      name: 'Onboarding Contact',
+      email: 'onboarding@example.com',
+      phone: '+15550109999',
+    },
+  });
+  console.log(`  ✓ Contact: ${contact.name}`);
 
-    // ── Appointments ────────────────────────────
-    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const dayAfter = new Date(Date.now() + 48 * 60 * 60 * 1000);
-    const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  // ── Event ───────────────────────────────────
+  const nextWeek = new Date();
+  nextWeek.setDate(nextWeek.getDate() + 7);
+  nextWeek.setHours(10, 0, 0, 0);
 
-    const appointments = await Promise.all(
-        [
-            { title: 'Dental Checkup', scheduledAt: tomorrow, customerId: customers[0].id, durationMinutes: 30, status: 'SCHEDULED' as any },
-            { title: 'Root Canal', scheduledAt: dayAfter, customerId: customers[1].id, durationMinutes: 60, status: 'CONFIRMED' as any },
-            { title: 'Teeth Cleaning', scheduledAt: nextWeek, customerId: customers[2].id, durationMinutes: 45, status: 'SCHEDULED' as any },
-        ].map((a) =>
-            prisma.appointment.create({
-                data: { ...a, tenantId: tenant.id },
-            }),
-        ),
-    );
-    console.log(`  ✓ Appointments: ${appointments.length} created`);
+  const event = await prisma.event.create({
+    data: {
+      tenantId: tenant.id,
+      title: 'Welcome Event',
+      description: 'Your first event on Meetora!',
+      startTime: nextWeek,
+      endTime: new Date(nextWeek.getTime() + 60 * 60 * 1000),
+      status: 'PUBLISHED' as any,
+      eventType: 'WEBINAR' as any,
+    },
+  });
+  console.log(`  ✓ Event: ${event.title}`);
 
-    // ── Templates ───────────────────────────────
-    const templates = await Promise.all(
-        [
-            {
-                name: '24h SMS Reminder',
-                channel: 'SMS' as any,
-                body: 'Hi {{customer_name}}, this is a reminder about your {{appointment_title}} tomorrow at {{appointment_time}}. Reply YES to confirm.',
-            },
-            {
-                name: '1h Voice Reminder',
-                channel: 'VOICE' as any,
-                body: 'Hello {{customer_name}}, this is a reminder that your {{appointment_title}} is in one hour at {{appointment_time}}. Press 1 to confirm.',
-            },
-        ].map((t) =>
-            prisma.template.create({
-                data: { ...t, tenantId: tenant.id, isActive: true },
-            }),
-        ),
-    );
-    console.log(`  ✓ Templates: ${templates.length} created`);
+  // ── Reminder Rule ───────────────────────────
+  const rule = await prisma.reminderRule.create({
+    data: {
+      tenantId: tenant.id,
+      name: '60m Before SMS',
+      channel: 'SMS' as any,
+      offsetMinutes: 60,
+      isActive: true,
+      messageTemplate: 'Hi, just a reminder that {{event_title}} starts in 1 hour!',
+    },
+  });
+  console.log(`  ✓ Reminder Rule: ${rule.name}`);
 
-    // ── Reminder Rules ──────────────────────────
-    const rules = await Promise.all(
-        [
-            { name: '24h Before SMS', channel: 'SMS' as any, offsetMinutes: 1440, templateId: templates[0].id },
-            { name: '1h Before Voice', channel: 'VOICE' as any, offsetMinutes: 60, templateId: templates[1].id },
-        ].map((r) =>
-            prisma.reminderRule.create({
-                data: { ...r, tenantId: tenant.id, isActive: true },
-            }),
-        ),
-    );
-    console.log(`  ✓ Reminder Rules: ${rules.length} created`);
-
-    console.log('\n✅ Seed complete!');
-    console.log('\n📋 Login credentials:');
-    console.log('   Email:    admin@demo.com');
-    console.log('   Password: REDACTED_PASSWORD');
+  console.log('\n✅ Onboarding seed complete!');
 }
 
 main()
-    .catch((e) => {
-        console.error('❌ Seed failed:', e);
-        process.exit(1);
-    })
-    .finally(() => prisma.$disconnect());
+  .catch((e) => {
+    console.error('❌ Seed failed:', e);
+    process.exit(1);
+  })
+  .finally(() => prisma.$disconnect());

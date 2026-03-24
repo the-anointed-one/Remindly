@@ -12,4 +12,4 @@ import { PLAN_FEATURE_KEY } from './plan.guard';
  *   sendSms() { ... }
  */
 export const PlanFeature = (feature: FeatureType) =>
-    SetMetadata(PLAN_FEATURE_KEY, feature);
+  SetMetadata(PLAN_FEATURE_KEY, feature);

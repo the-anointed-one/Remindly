@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
+import Icon from '@/components/ui/Icon';
+import { faFileAlt } from '@fortawesome/free-solid-svg-icons';
 
 interface Template { id: string; name: string; channel: string; body: string; subject?: string; isActive: boolean; variables: string[]; }
 
@@ -37,9 +39,9 @@ export default function TemplatesPage() {
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4" style={{ marginBottom: 24 }}>
                 <h1 style={{ fontSize: 28, fontWeight: 800 }}>Templates</h1>
-                <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : '+ New Template'}</button>
+                <button className="btn btn-primary w-full md:w-auto" onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : '+ New Template'}</button>
             </div>
 
             {showForm && (
@@ -77,8 +79,8 @@ export default function TemplatesPage() {
             )}
 
             {loading ? <p style={{ color: 'var(--text-muted)' }}>Loading...</p> : templates.length === 0 ? (
-                <div className="card" style={{ textAlign: 'center', padding: 48 }}>
-                    <div style={{ fontSize: 48, marginBottom: 16 }}>📝</div>
+                <div className="card" style={{ textAlign: 'center', padding: 'clamp(20px, 4vw, 48px)' }}>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}><Icon icon={faFileAlt} className="text-muted" /></div>
                     <h3 style={{ fontSize: 18, marginBottom: 8 }}>No Templates Yet</h3>
                     <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Create templates or use AI to generate them.</p>
                 </div>

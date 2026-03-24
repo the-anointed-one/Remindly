@@ -1,5 +1,5 @@
 .footer {
-    background: var(--bg-secondary);
+    background: var(--bg-app);
     border-top: 1px solid var(--border);
     padding: 64px 0 0;
 }
@@ -23,10 +23,7 @@
 .logo {
     font-size: 18px;
     font-weight: 800;
-    background: var(--accent-gradient);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--primary);
 }
 
 .col {
@@ -50,7 +47,7 @@
 }
 
 .col a:hover {
-    color: var(--text-primary);
+    color: var(--primary);
 }
 
 .bottom {

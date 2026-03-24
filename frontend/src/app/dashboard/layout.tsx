@@ -1,21 +1,185 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { AuthProvider, useAuth } from '@/lib/auth';
+import { useAuth } from '@/lib/auth';
+import { ToastProvider } from '@/components/Toast';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import type { IconProp } from '@fortawesome/fontawesome-svg-core';
 import styles from './dashboard.module.css';
+import Icon from '@/components/ui/Icon';
+import { useOnboarding } from '@/hooks/useOnboarding';
+import OnboardingModal from '@/components/onboarding/OnboardingModal';
+import {
+    faChartLine, faCalendar, faUser, faBell, faCog, faEnvelope, faStar, faUsers, faRobot,
+    faBolt, faMapPin, faFileAlt, faSquare, faGift, faBullhorn, faCreditCard, faChartPie, faEye,
+    faExclamationTriangle, faClock, faCheckCircle, faTimesCircle, faLock, faBars, faXmark,
+    faTag, faCalendarDays, faPaperPlane, faLayerGroup
+} from '@fortawesome/free-solid-svg-icons';
+import UserMenu from '@/components/navigation/UserMenu';
+
+// ── CORE ─────────────────────────────────────────────────────
+const NAV_CORE = [
+    { href: '/dashboard', icon: faChartLine, label: 'Dashboard' },
+    { href: '/dashboard/calendar', icon: faCalendar, label: 'Calendar' },
+    { href: '/dashboard/events', icon: faCalendar, label: 'Events' },
+];
+
+// ── AUDIENCE ─────────────────────────────────────────────────
+const NAV_AUDIENCE = [
+    { href: '/dashboard/contacts', icon: faUsers, label: 'Contacts' },
+    { href: '/dashboard/tags', icon: faTag, label: 'Tags' },
+];
+
+// ── MESSAGING ────────────────────────────────────────────────
+const NAV_MESSAGING = [
+    { href: '/dashboard/campaigns', icon: faBullhorn, label: 'Campaigns' },
+    { href: '/dashboard/messaging', icon: faPaperPlane, label: 'Broadcast' },
+    { href: '/dashboard/templates', icon: faFileAlt, label: 'Templates' },
+];
+
+// ── AUTOMATION ───────────────────────────────────────────────
+const NAV_AUTOMATION = [
+    { href: '/dashboard/automations', icon: faBolt, label: 'Automation' },
+    { href: '/dashboard/reminders', icon: faBell, label: 'Reminders' },
+    { href: '/dashboard/ai', icon: faRobot, label: 'AI Assistant' },
+];
+
+// ── INSIGHTS ─────────────────────────────────────────────────
+const NAV_INSIGHTS = [
+    { href: '/dashboard/analytics', icon: faChartPie, label: 'Analytics' },
+];
+
+// ── SETTINGS ─────────────────────────────────────────────────
+const NAV_SETTINGS = [
+    { href: '/dashboard/locations', icon: faMapPin, label: 'Locations' },
+    { href: '/dashboard/billing', icon: faCreditCard, label: 'Billing' },
+    { href: '/dashboard/settings', icon: faCog, label: 'Settings' },
+];
+
+function StatusBadge({
+    subscriptionStatus,
+    trialActive,
+    trialDaysRemaining,
+    plan,
+}: {
+    subscriptionStatus: string;
+    trialActive: boolean;
+    trialDaysRemaining: number;
+    plan: string;
+}) {
+    if (trialActive) {
+        const urgent = trialDaysRemaining <= 3;
+        return (
+            <div className={styles.trialBadge} style={{ background: urgent ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.1)', border: `1px solid ${urgent ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}` }}>
+                <span style={{ fontSize: 14 }}>{urgent ? <Icon icon={faExclamationTriangle} /> : <Icon icon={faClock} />}</span>
+                <span style={{ color: urgent ? '#f87171' : '#F7941D', fontWeight: 600 }}>
+                    {trialDaysRemaining} day{trialDaysRemaining !== 1 ? 's' : ''} left in trial
+                </span>
+                <Link href="/dashboard/billing" className="btn btn-primary btn-sm" style={{ marginLeft: 8 }}>
+                    Upgrade
+                </Link>
+            </div>
+        );
+    }
+
+    if (subscriptionStatus === 'ACTIVE') {
+        return (
+            <div className={styles.trialBadge} style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                <span style={{ fontSize: 14 }}><Icon icon={faCheckCircle} /></span>
+                <span style={{ color: '#4ade80', fontWeight: 600 }}>
+                    Active — {plan.replace(/_/g, ' + ')}
+                </span>
+            </div>
+        );
+    }
+
+    if (subscriptionStatus === 'PAST_DUE') {
+        return (
+            <div className={styles.trialBadge} style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                <span style={{ fontSize: 14 }}><Icon icon={faTimesCircle} /></span>
+                <span style={{ color: '#f87171', fontWeight: 600 }}>Payment Failed</span>
+                <Link href="/dashboard/billing" className="btn btn-sm" style={{ marginLeft: 8, background: '#ef4444', color: '#fff', border: 'none' }}>
+                    Fix Now
+                </Link>
+            </div>
+        );
+    }
+
+    if (subscriptionStatus === 'CANCELLED' || subscriptionStatus === 'EXPIRED') {
+        return (
+            <div className={styles.trialBadge} style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)' }}>
+                <span style={{ fontSize: 14 }}><Icon icon={faLock} /></span>
+                <span style={{ color: '#a5b4fc', fontWeight: 600 }}>Subscription Required</span>
+                <Link href="/onboarding/plan" className="btn btn-primary btn-sm" style={{ marginLeft: 8 }}>
+                    Subscribe
+                </Link>
+            </div>
+        );
+    }
+
+    // TRIALING but trialActive === false → pending checkout
+    if (subscriptionStatus === 'TRIALING' && !trialActive) {
+        return (
+            <div className={styles.trialBadge} style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)' }}>
+                <span style={{ fontSize: 14 }}><Icon icon={faCreditCard} /></span>
+                <span style={{ color: '#a5b4fc', fontWeight: 600 }}>Complete setup to start trial</span>
+                <Link href="/onboarding/plan" className="btn btn-primary btn-sm" style={{ marginLeft: 8 }}>
+                    Start Trial
+                </Link>
+            </div>
+        );
+    }
+
+    return null;
+}
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
-    const { user, loading, logout, plan, trialActive, trialDaysRemaining, usage } = useAuth();
+    const { user, loading, logout, plan, subscriptionStatus, trialActive, trialDaysRemaining, usage } = useAuth();
+    const { showOnboarding, completeOnboarding, skipOnboarding } = useOnboarding(!loading && !!user);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [isMobile, setIsMobile] = useState(() =>
+        typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+    );
 
     useEffect(() => {
-        if (!loading && !user) {
+        const mql = window.matchMedia('(max-width: 768px)');
+        const handler = (e: MediaQueryListEvent) => {
+            setIsMobile(e.matches);
+            if (!e.matches) setSidebarOpen(false);
+        };
+        mql.addEventListener('change', handler);
+        return () => mql.removeEventListener('change', handler);
+    }, []);
+
+    const ONBOARDING_NAV_HIGHLIGHT = new Set(['/dashboard/events', '/dashboard/messaging', '/dashboard/automations']);
+    const ALL_NAV = [...NAV_CORE, ...NAV_AUDIENCE, ...NAV_MESSAGING, ...NAV_AUTOMATION, ...NAV_INSIGHTS, ...NAV_SETTINGS];
+    const pageTitle = ALL_NAV.find(item => item.href === pathname)?.label ?? 'Dashboard';
+
+    const redirecting = useRef(false);
+
+    useEffect(() => {
+        if (loading || redirecting.current) return;
+
+        // Avoid endless redirect loops for protected pages
+        const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/onboarding');
+
+        if (!user && !isAuthRoute) {
+            redirecting.current = true;
             router.push('/login');
+            return;
         }
-    }, [loading, user, router]);
+
+        if (user && subscriptionStatus === 'TRIALING' && !trialActive && !pathname.startsWith('/onboarding')) {
+            redirecting.current = true;
+            router.push('/onboarding/plan');
+        }
+    }, [loading, user, subscriptionStatus, trialActive, router, pathname]);
+
 
     if (loading) {
         return <div className={styles.loading}><div className={styles.spinner} /></div>;
@@ -23,35 +187,82 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
     if (!user) return null;
 
-    const navItems = [
-        { href: '/dashboard', icon: '📊', label: 'Overview' },
-        { href: '/dashboard/appointments', icon: '📅', label: 'Appointments' },
-        { href: '/dashboard/reminders', icon: '🔔', label: 'Reminder Rules' },
-        { href: '/dashboard/templates', icon: '📝', label: 'Templates' },
-        { href: '/dashboard/ai', icon: '🤖', label: 'AI Assistant' },
-        { href: '/dashboard/billing', icon: '💳', label: 'Billing' },
-    ];
+    // Keep user on page if PAST_DUE or CANCELLED — they should see billing to fix it
+    const smsLimit = usage?.sms?.limit ?? 0;
+    const smsUsed = usage?.sms?.used ?? 0;
+    const smsPercent = smsLimit > 0 ? Math.min(100, (smsUsed / smsLimit) * 100) : 0;
 
-    const smsPercent = usage.sms.limit > 0 ? Math.min(100, (usage.sms.used / usage.sms.limit) * 100) : 0;
-    const aiPercent = usage.ai.limit > 0 ? Math.min(100, (usage.ai.used / usage.ai.limit) * 100) : 0;
+    const aiLimit = usage?.ai?.limit ?? 0;
+    const aiUsed = usage?.ai?.used ?? 0;
+    const aiPercent = aiLimit > 0 ? Math.min(100, (aiUsed / aiLimit) * 100) : 0;
 
     return (
         <div className={styles.layout}>
-            <aside className={styles.sidebar}>
+            {/* First-time user onboarding walkthrough */}
+            {showOnboarding && (
+                <OnboardingModal
+                    onComplete={completeOnboarding}
+                    onSkip={skipOnboarding}
+                />
+            )}
+
+            {/* Mobile backdrop */}
+            <AnimatePresence>
+                {sidebarOpen && isMobile && (
+                    <motion.div
+                        className={styles.mobileOverlay}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        onClick={() => setSidebarOpen(false)}
+                    />
+                )}
+            </AnimatePresence>
+
+            <motion.aside
+                className={styles.sidebar}
+                initial={false}
+                animate={isMobile ? { x: sidebarOpen ? 0 : -260 } : { x: 0 }}
+                transition={{ duration: 0.2, ease: [0.32, 0, 0.67, 0] }}
+            >
                 <div className={styles.sidebarLogo}>
-                    <Link href="/">⚡ <span className="text-gradient">Attendlyx</span></Link>
+                    <Link href="/"><span className="text-gradient">Meetora</span></Link>
                 </div>
 
                 <nav className={styles.nav}>
-                    {navItems.map((item) => (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={`${styles.navItem} ${pathname === item.href ? styles.active : ''}`}
-                        >
-                            <span className={styles.navIcon}>{item.icon}</span>
-                            {item.label}
-                        </Link>
+                    {[
+                        { label: 'CORE', items: NAV_CORE },
+                        { label: 'AUDIENCE', items: NAV_AUDIENCE },
+                        { label: 'MESSAGING', items: NAV_MESSAGING },
+                        { label: 'AUTOMATION', items: NAV_AUTOMATION },
+                        { label: 'INSIGHTS', items: NAV_INSIGHTS },
+                        { label: 'SETTINGS', items: NAV_SETTINGS },
+                    ].map((section, idx) => (
+                        <div key={section.label} className={styles.navSection}>
+                            <span className={styles.navSectionLabel}>
+                                {section.label}
+                            </span>
+                            {section.items.map((item: { href: string; icon: IconProp; label: string }) => {
+                                const isActive = pathname === item.href;
+                                const highlightOnboarding = showOnboarding && ONBOARDING_NAV_HIGHLIGHT.has(item.href);
+
+                                return (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        onClick={() => setSidebarOpen(false)}
+                                        className={`${styles.navItem} ${isActive ? styles.navItemActive : styles.navItemInactive} ${highlightOnboarding ? styles.onboardingHighlight : ''}`}
+                                    >
+                                        <span className={styles.navIcon} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Icon icon={item.icon} className={`w-5 h-5 ${isActive ? 'text-white' : 'text-gray-400'}`} />
+                                        </span>
+                                        {item.label}
+                                    </Link>
+                                );
+                            })}
+                            {idx < 5 && <div className={styles.navSectionDivider} />}
+                        </div>
                     ))}
                 </nav>
 
@@ -60,49 +271,65 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                     <div className={styles.usageItem}>
                         <div className={styles.usageHeader}>
                             <span>SMS</span>
-                            <span>{usage.sms.used}/{usage.sms.limit}</span>
+                            <span>{smsUsed}/{smsLimit}</span>
                         </div>
                         <div className="progress-bar">
-                            <div className={`progress-fill ${smsPercent > 80 ? 'warning' : ''} ${smsPercent > 95 ? 'danger' : ''}`} style={{ width: `${smsPercent}%` }} />
+                            <div
+                                className={`progress-fill ${smsPercent > 80 ? 'warning' : ''} ${smsPercent > 95 ? 'danger' : ''}`}
+                                style={{ width: `${smsPercent}%` }}
+                            />
                         </div>
                     </div>
                     <div className={styles.usageItem}>
                         <div className={styles.usageHeader}>
                             <span>AI</span>
-                            <span>{usage.ai.used}/{usage.ai.limit}</span>
+                            <span>{aiUsed}/{aiLimit}</span>
                         </div>
                         <div className="progress-bar">
-                            <div className={`progress-fill ${aiPercent > 80 ? 'warning' : ''} ${aiPercent > 95 ? 'danger' : ''}`} style={{ width: `${aiPercent}%` }} />
+                            <div
+                                className={`progress-fill ${aiPercent > 80 ? 'warning' : ''} ${aiPercent > 95 ? 'danger' : ''}`}
+                                style={{ width: `${aiPercent}%` }}
+                            />
                         </div>
                     </div>
                 </div>
 
-                <button onClick={logout} className={styles.logoutBtn}>Sign Out</button>
-            </aside>
+            </motion.aside>
 
             <div className={styles.main}>
                 {/* Topbar */}
-                <header className={styles.topbar}>
-                    <div>
-                        <span className={styles.greeting}>Welcome, {user.firstName || user.email.split('@')[0]}</span>
-                        <span className={`badge ${plan === 'SMS_VOICE_AI' ? 'badge-accent' : plan === 'SMS_VOICE' ? 'badge-info' : 'badge-success'}`} style={{ marginLeft: 12 }}>
-                            {plan.replace(/_/g, ' + ')}
+                <header className={`${styles.topbar} bg-surface border-b border-border`}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <button
+                            className={styles.hamburger}
+                            onClick={() => setSidebarOpen(!sidebarOpen)}
+                            aria-label="Toggle navigation"
+                        >
+                            <Icon icon={sidebarOpen ? faXmark : faBars} />
+                        </button>
+                        <span className={styles.greeting}>
+                            Welcome, {user.firstName || user.email?.split('@')[0] || 'there'}
                         </span>
+                        <span className={styles.pageTitle}>{pageTitle}</span>
                     </div>
                     <div className={styles.topbarRight}>
-                        {trialActive && (
-                            <div className={styles.trialBadge}>
-                                <span className={styles.trialIcon}>⏱</span>
-                                <span>{trialDaysRemaining} days left in trial</span>
-                                <Link href="/dashboard/billing" className="btn btn-primary btn-sm" style={{ marginLeft: 12 }}>Upgrade</Link>
-                            </div>
-                        )}
+                        <StatusBadge
+                            subscriptionStatus={subscriptionStatus}
+                            trialActive={trialActive}
+                            trialDaysRemaining={trialDaysRemaining}
+                            plan={plan}
+                        />
+                        <UserMenu />
                     </div>
                 </header>
 
-                <div className={styles.content}>
-                    {children}
-                </div>
+                <ErrorBoundary>
+                    <div className={styles.content}>
+                        <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
+                            {children}
+                        </div>
+                    </div>
+                </ErrorBoundary>
             </div>
         </div>
     );
@@ -110,8 +337,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     return (
-        <AuthProvider>
-            <DashboardShell>{children}</DashboardShell>
-        </AuthProvider>
+        <DashboardShell>{children}</DashboardShell>
     );
 }

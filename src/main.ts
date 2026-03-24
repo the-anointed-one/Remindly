@@ -1,5 +1,5 @@
 /**
- * Attendlyx — Application Entry Point (Production-Ready)
+ * Meetora — Application Entry Point (Production-Ready)
  *
  * SCALABILITY STRATEGY:
  * ─────────────────────
@@ -36,14 +36,15 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule, {
     // Production: only error, warn, log. Dev: all levels.
-    logger: process.env.NODE_ENV === 'production'
-      ? ['error', 'warn', 'log']
-      : ['error', 'warn', 'log', 'debug', 'verbose'],
+    logger:
+      process.env.NODE_ENV === 'production'
+        ? ['error', 'warn', 'log']
+        : ['error', 'warn', 'log', 'debug', 'verbose'],
   });
 
   // ── Security ────────────────────────────────
-  app.use(helmet());           // Security headers (XSS, CSP, etc.)
-  app.use(compression());      // Gzip/Brotli compression
+  app.use(helmet()); // Security headers (XSS, CSP, etc.)
+  app.use(compression()); // Gzip/Brotli compression
 
   // ── Global Prefix ───────────────────────────
   app.setGlobalPrefix('api');
@@ -51,18 +52,21 @@ async function bootstrap() {
   // ── Validation ──────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,          // Strip unknown properties
+      whitelist: true, // Strip unknown properties
       forbidNonWhitelisted: true, // Reject unknown properties
-      transform: true,          // Auto-transform payloads to DTOs
+      transform: true, // Auto-transform payloads to DTOs
     }),
   );
 
   // ── CORS ────────────────────────────────────
   const configService = app.get(ConfigService);
-  const allowedOrigins = configService.get<string>('CORS_ORIGINS', 'http://localhost:3001');
+  const allowedOrigins = configService.get<string>(
+    'CORS_ORIGINS',
+    'http://localhost:3001',
+  );
 
   app.enableCors({
-    origin: allowedOrigins.split(',').map((o) => o.trim()),
+    origin: configService.get<string>('FRONTEND_URL', 'http://localhost:3001'),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
@@ -75,7 +79,7 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);
 
-  logger.log(`🚀 Attendlyx API listening on port ${port}`);
+  logger.log(`🚀 Meetora API listening on port ${port}`);
   logger.log(`📋 Environment: ${configService.get('NODE_ENV', 'development')}`);
   logger.log(`🔒 CORS origins: ${allowedOrigins}`);
 }

@@ -13,15 +13,15 @@ import { Request, Response, NextFunction } from 'express';
  */
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
-    private readonly logger = new Logger(TenantMiddleware.name);
+  private readonly logger = new Logger(TenantMiddleware.name);
 
-    use(req: Request, _res: Response, next: NextFunction) {
-        const user = (req as any).user;
+  use(req: Request, _res: Response, next: NextFunction) {
+    const user = (req as any).user;
 
-        if (user?.tenantId) {
-            (req as any).tenantId = user.tenantId;
-        }
-
-        next();
+    if (user?.tenantId) {
+      (req as any).tenantId = user.tenantId;
     }
+
+    next();
+  }
 }

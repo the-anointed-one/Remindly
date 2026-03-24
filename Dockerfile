@@ -1,5 +1,5 @@
 # ────────────────────────────────────────────────
-# Attendlyx API — Multi-Stage Production Dockerfile
+# Meetora API — Multi-Stage Production Dockerfile
 # ────────────────────────────────────────────────
 # SCALABILITY:
 # - Multi-stage build minimizes image size (~150MB vs ~1GB)

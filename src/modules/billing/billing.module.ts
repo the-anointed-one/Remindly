@@ -6,9 +6,9 @@ import { PaystackProvider } from './paystack.provider';
 import { PaystackWebhookController } from './paystack-webhook.controller';
 
 @Module({
-    imports: [ScheduleModule.forRoot()],
-    controllers: [BillingController, PaystackWebhookController],
-    providers: [BillingService, PaystackProvider],
-    exports: [BillingService, PaystackProvider],
+  imports: [ScheduleModule.forRoot()],
+  controllers: [BillingController, PaystackWebhookController],
+  providers: [BillingService, PaystackProvider],
+  exports: [BillingService, PaystackProvider],
 })
-export class BillingModule { }
+export class BillingModule {}

@@ -4,7 +4,7 @@
     align-items: center;
     justify-content: center;
     padding: 100px 24px 48px;
-    background: radial-gradient(ellipse at 50% 0%, rgba(59, 130, 246, 0.08) 0%, transparent 50%);
+    background: radial-gradient(ellipse at 50% 0%, rgba(0, 169, 157, 0.08) 0%, transparent 50%);
 }
 
 .formCard {
@@ -32,13 +32,13 @@
 .form {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
 }
 
 .error {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: var(--danger);
+    background: rgba(224, 82, 82, 0.1);
+    border: 1px solid rgba(224, 82, 82, 0.3);
+    color: var(--error);
     padding: 12px 16px;
     border-radius: var(--radius-md);
     font-size: 13px;
@@ -50,4 +50,29 @@
     margin-top: 24px;
     font-size: 14px;
     color: var(--text-muted);
+}
+
+.nameGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+@media (max-width: 480px) {
+    .page {
+        padding: 80px 16px 32px;
+        align-items: flex-start;
+    }
+
+    .formCard {
+        padding: 28px 20px;
+    }
+
+    .title {
+        font-size: 22px;
+    }
+
+    .nameGrid {
+        grid-template-columns: 1fr;
+    }
 }

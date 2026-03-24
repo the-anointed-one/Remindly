@@ -1,5 +1,6 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
@@ -31,6 +32,24 @@ import { AIModule } from './modules/ai/ai.module';
 import { WebhookModule } from './modules/webhook/webhook.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthModule } from './health/health.module';
+import { EmailModule } from './modules/email/email.module';
+import { GoogleReviewModule } from './modules/google-review/google-review.module';
+import { CalendarIntegrationModule } from './modules/calendar-integration/calendar-integration.module';
+import { ContactsModule } from './modules/contacts/contacts.module';
+import { ReschedulingModule } from './modules/rescheduling/rescheduling.module';
+import { BookingWidgetModule } from './modules/booking-widget/booking-widget.module';
+import { ComplianceModule } from './modules/compliance/compliance.module';
+import { LocationsModule } from './modules/locations/locations.module';
+import { ReferralModule } from './modules/referral/referral.module';
+import { AutomationModule } from './modules/automation/automation.module';
+import { PredictionModule } from './modules/prediction/prediction.module';
+import { ReputationModule } from './modules/reputation/reputation.module';
+import { ReactivationModule } from './modules/reactivation/reactivation.module';
+import { ChannelStrategyModule } from './modules/channel-strategy/channel-strategy.module';
+import { RevenueAnalyticsModule } from './modules/revenue-analytics/revenue-analytics.module';
+import { CampaignModule } from './modules/campaign/campaign.module';
+import { EventModule } from './modules/event/event.module';
+import { RsvpModule } from './modules/rsvp/rsvp.module';
 
 @Module({
   imports: [
@@ -61,9 +80,30 @@ import { HealthModule } from './health/health.module';
     WebhookModule,
     AnalyticsModule,
     HealthModule,
+    EmailModule,
+    GoogleReviewModule,
+    CalendarIntegrationModule,
+    ContactsModule,
+    ReschedulingModule,
+    BookingWidgetModule,
+    ComplianceModule,
+    LocationsModule,
+    ReferralModule,
+    AutomationModule,
+    PredictionModule,
+    ReputationModule,
+    ReactivationModule,
+    ChannelStrategyModule,
+    RevenueAnalyticsModule,
+    CampaignModule,
+    EventModule,
+    RsvpModule,
 
     // Rate limiting: 100 requests per 60 seconds per IP
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+
+    // Cron jobs (UsageResetJob etc.)
+    ScheduleModule.forRoot(),
   ],
   providers: [
     // Global exception filter
@@ -95,6 +135,9 @@ import { HealthModule } from './health/health.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TenantMiddleware).forRoutes('*path');
+    consumer
+      .apply(TenantMiddleware)
+      .exclude('webhooks/twilio/(.*)')
+      .forRoutes('*path');
   }
 }
