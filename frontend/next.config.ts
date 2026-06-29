@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+    output: 'standalone',
     images: {
         // Serve modern formats automatically — AVIF first, WebP fallback
         formats: ['image/avif', 'image/webp'],
@@ -16,11 +17,6 @@ const nextConfig: NextConfig = {
     },
     async redirects() {
         return [
-            {
-                source: '/industries/:slug',
-                destination: '/',
-                permanent: true,
-            },
             {
                 source: '/dashboard/appointments',
                 destination: '/dashboard/events',

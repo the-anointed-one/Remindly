@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { AnimatePresence, motion, useScroll, useTransform, useReducedMotion } from 'framer-motion';
@@ -8,7 +8,7 @@ import { AnimatePresence, motion, useScroll, useTransform, useReducedMotion } fr
 // ── Slide data ────────────────────────────────────────────────────────────────
 
 interface Slide {
-    headline: string;
+    headline: string | ReactNode;
     subtext: string;
     cta: { label: string; href: string };
     ctaSecondary?: { label: string; href: string };
@@ -18,9 +18,9 @@ interface Slide {
 
 const SLIDES: Slide[] = [
     {
-        headline: 'Stop Losing Revenue to Missed Appointments',
-        subtext: 'Automated SMS, WhatsApp and Voice reminders with AI-powered no-show prediction. Set it up once — we handle the rest.',
-        cta: { label: 'Start Free Trial', href: '/register' },
+        headline: <>Stop No-Shows. <span style={{ color: 'var(--primary)' }}>Automate Attendance.</span></>,
+        subtext: 'Send reminders via SMS, WhatsApp, Voice, and Email. Capture RSVPs automatically. Trigger follow-ups. All in one place.',
+        cta: { label: 'Get started free', href: '/register' },
         ctaSecondary: { label: 'See How It Works →', href: '/features' },
         image: '/images/hero/slide-1.jpg',
         accent: 'var(--primary)',
@@ -335,6 +335,18 @@ export default function HeroCarousel() {
                                     </Link>
                                 )}
                             </motion.div>
+
+                            {/* Social Proof */}
+                            <motion.p
+                                variants={ITEM_VARIANTS}
+                                style={{
+                                    fontSize: 13,
+                                    color: 'var(--text-muted)',
+                                    marginTop: 12,
+                                }}
+                            >
+                                Trusted by clinics, coaches, and wellness studios. No credit card required.
+                            </motion.p>
                         </motion.div>
                     </AnimatePresence>
                 </div>

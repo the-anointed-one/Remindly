@@ -244,7 +244,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                                 {section.label}
                             </span>
                             {section.items.map((item: { href: string; icon: IconProp; label: string }) => {
-                                const isActive = pathname === item.href;
+                                const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
                                 const highlightOnboarding = showOnboarding && ONBOARDING_NAV_HIGHLIGHT.has(item.href);
 
                                 return (
@@ -252,10 +252,30 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                                         key={item.href}
                                         href={item.href}
                                         onClick={() => setSidebarOpen(false)}
-                                        className={`${styles.navItem} ${isActive ? styles.navItemActive : styles.navItemInactive} ${highlightOnboarding ? styles.onboardingHighlight : ''}`}
+                                        className={`${styles.navItem} ${highlightOnboarding ? styles.onboardingHighlight : ''}`}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 10,
+                                            padding: '8px 12px',
+                                            borderRadius: 'var(--radius-md)',
+                                            fontSize: 14,
+                                            fontWeight: isActive ? 500 : 400,
+                                            color: isActive 
+                                                ? 'var(--text-primary)' 
+                                                : 'var(--text-secondary)',
+                                            background: isActive 
+                                                ? 'var(--bg-secondary)' 
+                                                : 'transparent',
+                                            borderLeft: isActive 
+                                                ? '2px solid var(--primary)' 
+                                                : '2px solid transparent',
+                                            textDecoration: 'none',
+                                            transition: 'all 0.15s',
+                                        }}
                                     >
-                                        <span className={styles.navIcon} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            <Icon icon={item.icon} className={`w-5 h-5 ${isActive ? 'text-white' : 'text-gray-400'}`} />
+                                        <span style={{ width: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isActive ? 1 : 0.6 }}>
+                                            <Icon icon={item.icon} className="w-5 h-5" />
                                         </span>
                                         {item.label}
                                     </Link>

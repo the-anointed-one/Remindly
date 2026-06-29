@@ -348,6 +348,7 @@ export default function SettingsPage() {
                                             background: 'var(--bg-secondary)', border: '1px solid var(--border)',
                                             color: 'var(--text-primary)', fontSize: 16,
                                         }}
+                                        title="Select a Google Business Profile location to connect."
                                     >
                                         {locations.map((loc) => (
                                             <option key={loc.locationId} value={loc.locationId}>
@@ -359,6 +360,7 @@ export default function SettingsPage() {
                                         onClick={handleSaveLocation}
                                         disabled={saving}
                                         className="btn btn-primary"
+                                        title="Save the selected Google Business Profile location."
                                     >
                                         {saving ? 'Saving...' : 'Save Location'}
                                     </button>
@@ -405,6 +407,7 @@ export default function SettingsPage() {
                                         background: 'none', border: '1px solid rgba(224, 82, 82, 0.35)',
                                         color: 'var(--error)', fontSize: 13, fontWeight: 600,
                                     }}
+                                    title="Disconnect your Google Business Profile."
                                 >
                                     {disconnecting ? 'Disconnecting...' : 'Disconnect'}
                                 </button>
@@ -414,6 +417,7 @@ export default function SettingsPage() {
                                 onClick={handleGoogleConnect}
                                 className="btn btn-outline"
                                 style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}
+                                title="Connect your Google Business Profile to enable AI Review Responder."
                             >
                                 <span style={{ fontSize: 18 }}>G</span>
                                 Connect Google Business Account
@@ -510,6 +514,7 @@ export default function SettingsPage() {
                                                     background: accentColor + '18', border: `1px solid ${accentColor}40`,
                                                     color: accentColor, fontSize: 13, fontWeight: 600, cursor: 'pointer',
                                                 }}
+                                                title={`Manually sync your ${label} events.`}
                                             >
                                                 {calendarSyncing === provider ? 'Syncing...' : 'Sync Now'}
                                             </button>
@@ -521,6 +526,7 @@ export default function SettingsPage() {
                                                     background: 'none', border: '1px solid rgba(224, 82, 82, 0.35)',
                                                     color: 'var(--error)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                                                 }}
+                                                title={`Disconnect your ${label} account.`}
                                             >
                                                 {calendarDisconnecting === provider ? '...' : 'Disconnect'}
                                             </button>
@@ -534,6 +540,7 @@ export default function SettingsPage() {
                                             background: 'none', border: `1px solid ${accentColor}50`,
                                             color: accentColor, fontSize: 13, fontWeight: 600, cursor: 'pointer',
                                         }}
+                                        title={`Connect your ${label} account.`}
                                     >
                                         Connect {label}
                                     </button>
@@ -572,6 +579,7 @@ export default function SettingsPage() {
                                 width: 44, height: 24, borderRadius: 'var(--radius-xl)', cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
                                 background: failoverEnabled ? 'var(--primary)' : 'var(--border)',
                             }}
+                            title={failoverEnabled ? 'Disable messaging failover' : 'Enable messaging failover'}
                         >
                             <div style={{
                                 position: 'absolute', top: 3, left: failoverEnabled ? 23 : 3,
@@ -616,6 +624,7 @@ export default function SettingsPage() {
                                                     color: i === 0 ? 'var(--text-muted)' : 'var(--text-primary)', fontSize: 12,
                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                 }}
+                                                title="Move channel up"
                                             ><Icon icon={faChevronUp} /></button>
                                             <button
                                                 onClick={() => moveChannel(i, 1)}
@@ -626,6 +635,7 @@ export default function SettingsPage() {
                                                     color: i === failoverChain.length - 1 ? 'var(--text-muted)' : 'var(--text-primary)', fontSize: 11,
                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                 }}
+                                                title="Move channel down"
                                             ><Icon icon={faChevronDown} /></button>
                                             <button
                                                 onClick={() => toggleChannelInChain(ch)}
@@ -634,6 +644,7 @@ export default function SettingsPage() {
                                                     background: 'none', cursor: 'pointer', color: 'var(--error)', fontSize: 12,
                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                 }}
+                                                title="Remove channel from failover chain"
                                             ><Icon icon={faXmark} /></button>
                                         </div>
                                     </div>
@@ -654,6 +665,7 @@ export default function SettingsPage() {
                                             border: `1px dashed ${colors[ch] ?? '#64748b'}50`,
                                             background: 'none', color: colors[ch] ?? '#64748b', cursor: 'pointer',
                                         }}
+                                        title={`Add ${ch} to failover chain`}
                                     >
                                         + {ch}
                                     </button>
@@ -684,6 +696,7 @@ export default function SettingsPage() {
                                     minHeight: 44, background: 'var(--bg-secondary)', border: '1px solid var(--border)',
                                     color: 'var(--text-primary)',
                                 }}
+                                title="Set the time in minutes to wait before triggering the next failover channel."
                             />
                             <span style={{ fontSize: 13, color: 'var(--text-muted)', flex: '1 1 180px' }}>
                                 Trigger fallback if unread after this many minutes

@@ -11,6 +11,7 @@
 
 # ── Stage 1: Install dependencies ──────────────
 FROM node:20-alpine AS deps
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma/
@@ -18,6 +19,7 @@ RUN npm ci --omit=dev && npx prisma generate
 
 # ── Stage 2: Build ─────────────────────────────
 FROM node:20-alpine AS builder
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma/
@@ -27,6 +29,7 @@ RUN npx prisma generate && npm run build
 
 # ── Stage 3: Production runtime ────────────────
 FROM node:20-alpine AS runner
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 
 # Security: non-root user
@@ -53,4 +56,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health/live || exit 1
 
 # Run migrations then start
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main.js"]

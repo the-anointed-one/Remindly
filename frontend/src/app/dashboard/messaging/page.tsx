@@ -165,6 +165,7 @@ export default function MessagingPage() {
                                 value={to}
                                 onChange={e => setTo(e.target.value)}
                                 placeholder="+2348012345678"
+                                title="Enter the recipient's mobile number in international format."
                                 required
                             />
                         </div>
@@ -178,6 +179,7 @@ export default function MessagingPage() {
                                 onChange={e => setQuickMessage(e.target.value)}
                                 placeholder={quickTab === 'voice' ? 'e.g. Dental Checkup' : 'Your appointment reminder...'}
                                 rows={4}
+                                title="Enter the content of your message or the appointment title."
                                 required
                                 style={{ resize: 'vertical', fontFamily: 'inherit' }}
                             />
@@ -217,6 +219,7 @@ export default function MessagingPage() {
                                         value={campaignName} 
                                         onChange={e => setCampaignName(e.target.value)} 
                                         placeholder="e.g. Summer Promo 2026" 
+                                        title="Give this broadcast a name for internal tracking."
                                     />
                                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
                                         Used to track delivery performance in the Campaigns tab.

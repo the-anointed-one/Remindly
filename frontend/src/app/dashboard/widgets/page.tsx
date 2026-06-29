@@ -57,6 +57,7 @@ function ServiceRow({
                 value={service.name}
                 onChange={(e) => onChange(index, { ...service, name: e.target.value })}
                 placeholder="Service name"
+                title="The name of the service offered."
                 style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 16 }}
             />
             <div className="flex gap-2 w-full">
@@ -67,6 +68,7 @@ function ServiceRow({
                     min={15}
                     max={480}
                     onChange={(e) => onChange(index, { ...service, duration: Number(e.target.value) })}
+                    title="How long the service lasts in minutes."
                     style={{ width: '100%', padding: '8px 28px 8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 16 }}
                 />
                 <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-muted)' }}>min</span>
@@ -78,6 +80,7 @@ function ServiceRow({
                     min={0}
                     placeholder="0"
                     onChange={(e) => onChange(index, { ...service, price: e.target.value ? Number(e.target.value) : undefined })}
+                    title="The cost of the service (optional)."
                     style={{ width: '100%', padding: '8px 8px 8px 20px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 16 }}
                 />
                 <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--text-muted)' }}>$</span>
@@ -263,6 +266,7 @@ export default function WidgetsPage() {
                                         value={config.businessName}
                                         onChange={(e) => setConfig((c) => ({ ...c, businessName: e.target.value }))}
                                         placeholder="e.g. Smith Dental Clinic"
+                                        title="The name that will be displayed on the booking widget."
                                         style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 16 }}
                                     />
                                 </div>
@@ -273,6 +277,7 @@ export default function WidgetsPage() {
                                         onChange={(e) => setConfig((c) => ({ ...c, welcomeMessage: e.target.value }))}
                                         placeholder="e.g. Book your appointment below — we'll confirm via SMS."
                                         rows={2}
+                                        title="A greeting message for your clients."
                                         style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 14, resize: 'vertical' }}
                                     />
                                 </div>
@@ -350,12 +355,14 @@ export default function WidgetsPage() {
                                     <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>Start Time</label>
                                     <input type="time" value={config.workingHoursStart}
                                         onChange={(e) => setConfig((c) => ({ ...c, workingHoursStart: e.target.value }))}
+                                        title="Standard opening time for bookings."
                                         style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 16 }} />
                                 </div>
                                 <div>
                                     <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>End Time</label>
                                     <input type="time" value={config.workingHoursEnd}
                                         onChange={(e) => setConfig((c) => ({ ...c, workingHoursEnd: e.target.value }))}
+                                        title="Standard closing time for bookings."
                                         style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 16 }} />
                                 </div>
                             </div>

@@ -13,7 +13,6 @@ async function main() {
     include: {
       participants: true,
       reminders: true,
-      predictionLogs: true,
       feedbackRequests: true,
       calendarSyncedEvents: true,
     },
@@ -78,13 +77,6 @@ async function main() {
           });
         }
         
-        if (appointment.predictionLogs.length > 0) {
-          await tx.predictionLog.updateMany({
-            where: { appointmentId: appointment.id },
-            data: { eventId: event.id }
-          });
-        }
-
         if (appointment.feedbackRequests.length > 0) {
           await tx.feedbackRequest.updateMany({
             where: { appointmentId: appointment.id },

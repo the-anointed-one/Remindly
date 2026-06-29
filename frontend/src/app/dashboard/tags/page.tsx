@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
 import Icon from '@/components/ui/Icon';
+import EmptyState from '@/components/EmptyState';
 import { faTag, faUsers, faSearch } from '@fortawesome/free-solid-svg-icons';
 
 interface TagWithCount {
@@ -19,8 +20,9 @@ export default function TagsPage() {
     const load = useCallback(async () => {
         try {
             const { data } = await api.get('/contacts/tags');
-            // Backend returns string[], enrich with counts
-            const tagNames: string[] = Array.isArray(data) ? data : [];
+            // Backend returns object[], normalize to string[] for existing logic
+            const rawTags = data?.data || data || [];
+            const tagNames: string[] = Array.isArray(rawTags) ? rawTags.map((t: any) => typeof t === 'string' ? t : t.name) : [];
 
             // Fetch counts per tag
             const counted = await Promise.all(
@@ -83,20 +85,13 @@ export default function TagsPage() {
                     ))}
                 </div>
             ) : filtered.length === 0 ? (
-                <div className="card" style={{ textAlign: 'center', padding: '60px 48px' }}>
-                    <div style={{ fontSize: 48, marginBottom: 16, color: 'var(--text-muted)' }}>
-                        <Icon icon={faTag} />
-                    </div>
-                    <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
-                        {search ? 'No tags match your search' : 'No tags yet'}
-                    </h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24 }}>
-                        Tags are created when you add them to contacts. Go to Contacts to get started.
-                    </p>
-                    <Link href="/dashboard/contacts" className="btn btn-primary">
-                        Go to Contacts
-                    </Link>
-                </div>
+                <EmptyState
+                    title={search ? 'No tags match your search' : 'No tags yet'}
+                    description="Tags are created when you add them to contacts. Go to Contacts to get started."
+                    icon={faTag}
+                    ctaLabel="Go to Contacts"
+                    ctaHref="/dashboard/contacts"
+                />
             ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
                     {filtered.map(tag => (

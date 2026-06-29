@@ -22,6 +22,7 @@ export default function ContactSearchDropdown({ value, onChange, multi = false, 
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<ContactSlim[]>([]);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(false);
     const [open, setOpen] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -40,20 +41,35 @@ export default function ContactSearchDropdown({ value, onChange, multi = false, 
     useEffect(() => {
         if (!query.trim()) {
             setResults([]);
+            setLoading(false);
+            setError(false);
             return;
         }
+
+        const controller = new AbortController();
         const timer = setTimeout(async () => {
             setLoading(true);
+            setError(false);
             try {
-                const { data } = await api.get(`/contacts?search=${encodeURIComponent(query)}&limit=10`);
+                const { data } = await api.get(`/contacts`, {
+                    params: { search: query, limit: 10 },
+                    signal: controller.signal
+                });
                 setResults(data.data || []);
-            } catch (err) {
-                console.error(err);
+            } catch (err: any) {
+                if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+                console.error('Contact search error', err);
+                setError(true);
+                setResults([]);
             } finally {
                 setLoading(false);
             }
         }, 300);
-        return () => clearTimeout(timer);
+
+        return () => {
+            clearTimeout(timer);
+            controller.abort();
+        };
     }, [query]);
 
     const handleSelect = (contact: ContactSlim) => {
@@ -131,9 +147,18 @@ export default function ContactSearchDropdown({ value, onChange, multi = false, 
                     boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
                 }}>
                     {loading ? (
-                        <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>Searching...</div>
+                        <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                            <div className="animate-spin" style={{ width: 14, height: 14, border: '2px solid var(--brand-primary)', borderTopColor: 'transparent', borderRadius: '50%' }}></div>
+                            Searching...
+                        </div>
+                    ) : error ? (
+                        <div style={{ padding: 16, textAlign: 'center', color: '#ef4444', fontSize: 13 }}>
+                            Search unavailable
+                        </div>
                     ) : results.length === 0 ? (
-                        <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>No contacts found</div>
+                        <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                            No contacts found
+                        </div>
                     ) : (
                         results.map((c) => (
                             <button

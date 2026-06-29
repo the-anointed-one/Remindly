@@ -135,7 +135,7 @@ export class MessagingService {
               });
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     }
 

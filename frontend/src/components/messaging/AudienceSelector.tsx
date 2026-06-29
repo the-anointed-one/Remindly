@@ -27,7 +27,10 @@ export default function AudienceSelector({ value, onChange }: Props) {
 
     useEffect(() => {
         Promise.all([
-            api.get('/contacts/tags').then(res => setTags(res.data)).catch(() => []),
+            api.get('/contacts/tags').then(res => {
+                const rawTags = res.data?.data || res.data || [];
+                setTags(Array.isArray(rawTags) ? rawTags.map((t: any) => typeof t === 'string' ? t : t.name) : []);
+            }).catch(() => []),
             api.get('/contacts/groups').then(res => setGroups(res.data)).catch(() => []),
             api.get('/appointments').then(res => setAppointments(Array.isArray(res.data) ? res.data : res.data?.data ?? [])).catch(() => []),
             api.get('/campaigns').then(res => setCampaigns(Array.isArray(res.data) ? res.data : [])).catch(() => []),

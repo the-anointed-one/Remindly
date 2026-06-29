@@ -5,7 +5,6 @@ import {
   WorkflowEngineService,
   TriggerEntityData,
 } from '../automation/workflow-engine.service';
-import { PredictionService } from '../prediction/prediction.service';
 import { ReputationService } from '../reputation/reputation.service';
 
 /**
@@ -30,7 +29,6 @@ export class EventLifecycleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly workflowEngine: WorkflowEngineService,
-    private readonly predictionService: PredictionService,
     private readonly reputationService: ReputationService,
   ) {}
 
@@ -50,10 +48,6 @@ export class EventLifecycleService {
       .catch((err) =>
         this.logger.error(`Workflow trigger failed: ${err.message}`),
       );
-
-    this.predictionService
-      .generatePrediction(appointmentId, tenantId)
-      .catch(() => {});
   }
 
   /**
@@ -141,12 +135,6 @@ export class EventLifecycleService {
         );
     }
 
-    // NO_SHOW — refresh prediction score with new data point
-    if (newStatus === 'NO_SHOW') {
-      this.predictionService
-        .generatePrediction(appointmentId, tenantId)
-        .catch(() => {});
-    }
   }
 
   // ── On Rescheduled ────────────────────────────────────────────────────────
@@ -207,7 +195,6 @@ export class EventLifecycleService {
         location: true,
         reminders: { orderBy: { scheduledSendTime: 'asc' } },
         participants: { include: { contact: true } },
-        predictionLogs: { orderBy: { generatedAt: 'desc' }, take: 1 },
       },
     });
 
@@ -269,8 +256,6 @@ export class EventLifecycleService {
       orderBy: { createdAt: 'asc' },
     });
 
-    const prediction = apt.predictionLogs[0] ?? null;
-
     return {
       appointment: {
         id: appointment.id,
@@ -295,14 +280,6 @@ export class EventLifecycleService {
         status: r.status,
         messageContent: r.messageContent,
       })),
-      prediction: prediction
-        ? {
-            riskScore: prediction.riskScore,
-            riskLevel: prediction.riskLevel,
-            signals: prediction.signals,
-            escalationTriggered: prediction.escalationTriggered,
-          }
-        : null,
       rsvpCampaign,
       feedback: feedbackRequest
         ? {

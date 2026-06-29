@@ -125,7 +125,12 @@ export class PaystackWebhookController {
         reference: reference || `REF_MOCK_${Date.now()}`,
         amount: amount || 1900,
       };
-      await this.handleChargeSuccess(data);
+      try {
+        await this.handleChargeSuccess(data);
+      } catch (err) {
+        this.logger.error(`QA Simulation failed: ${err.message}`, err.stack);
+        throw err;
+      }
     }
 
     return { simulated: true };
@@ -146,6 +151,7 @@ export class PaystackWebhookController {
     }
 
     const tenant = await this.findTenantWithStatus(email);
+    this.logger.log(`findTenantWithStatus(${email}) → ${tenant ? tenant.id : 'NOT FOUND'}`);
     if (!tenant) {
       this.logger.warn(`charge.success — no tenant found for ${email}`);
       return;

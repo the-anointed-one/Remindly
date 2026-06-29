@@ -220,14 +220,32 @@ export default function FeaturesPage() {
                                 @media (max-width: 768px) { .rsvp-grid { grid-template-columns: 1fr !important; } }
                             `}</style>
                             <div className="rsvp-grid">
-                                <div style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                                    padding: '5px 14px', borderRadius: 100,
-                                    background: 'rgba(0,169,157,0.1)', border: '1px solid rgba(0,169,157,0.3)',
-                                    fontSize: 11, fontWeight: 700, letterSpacing: '0.08em',
-                                    color: 'var(--primary)', textTransform: 'uppercase', marginBottom: 20,
+                                <p style={{
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.1em',
+                                    color: 'var(--text-muted)',
+                                    marginBottom: 12,
                                 }}>
-                                    ⚡ SIGNATURE FEATURE
+                                    Core differentiator
+                                </p>
+                                <div style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    padding: '6px 16px',
+                                    borderRadius: 999,
+                                    background: '#E1F5EE',
+                                    marginBottom: 20,
+                                }}>
+                                    <span style={{
+                                        fontSize: 13,
+                                        fontWeight: 600,
+                                        color: '#0F6E56',
+                                    }}>
+                                        The feature that sets Meetora apart
+                                    </span>
                                 </div>
                                 <h2 style={{ fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 900, letterSpacing: '-1.5px', marginBottom: 20, lineHeight: 1.1 }}>
                                     Auto-RSVP That<br />
@@ -314,6 +332,97 @@ export default function FeaturesPage() {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </section>
+
+                {/* ── Smart Automations ─────────────────────── */}
+                <section style={{
+                    padding: 'clamp(48px, 8vw, 96px) clamp(16px, 5vw, 80px)',
+                    maxWidth: 1100,
+                    margin: '0 auto',
+                    borderTop: '0.5px solid var(--border)',
+                }}>
+                    <p style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.1em',
+                        color: 'var(--text-muted)',
+                        marginBottom: 12,
+                    }}>
+                        Automation engine
+                    </p>
+                    <h2 style={{
+                        fontSize: 'clamp(24px, 3.5vw, 38px)',
+                        fontWeight: 700,
+                        lineHeight: 1.2,
+                        marginBottom: 16,
+                        color: 'var(--text-primary)',
+                        maxWidth: 640,
+                    }}>
+                        Set the rules once. Let Meetora handle the rest.
+                    </h2>
+                    <p style={{
+                        fontSize: 17,
+                        color: 'var(--text-secondary)',
+                        lineHeight: 1.7,
+                        marginBottom: 48,
+                        maxWidth: 580,
+                    }}>
+                        Build if/then workflows that fire automatically based on
+                        RSVP responses, time windows, and contact behaviour —
+                        no code required.
+                    </p>
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                        gap: 28,
+                    }}>
+                        {[
+                            {
+                                label: 'If no response → remind again',
+                                detail:
+                                    'Set a follow-up reminder to fire automatically if a contact has not replied within your chosen window.',
+                            },
+                            {
+                                label: 'If confirmed → send details',
+                                detail:
+                                    'Automatically send location, agenda, or Zoom link to every contact who confirms attendance.',
+                            },
+                            {
+                                label: 'If cancelled → reschedule',
+                                detail:
+                                    'Trigger a reschedule flow the moment someone cancels so the slot is never wasted.',
+                            },
+                        ].map((point) => (
+                            <div
+                                key={point.label}
+                                style={{
+                                    padding: '24px',
+                                    borderRadius: 12,
+                                    border: '0.5px solid var(--border)',
+                                    background: 'var(--bg-secondary)',
+                                }}
+                            >
+                                <p style={{
+                                    fontSize: 15,
+                                    fontWeight: 600,
+                                    color: 'var(--text-primary)',
+                                    marginBottom: 10,
+                                    lineHeight: 1.3,
+                                }}>
+                                    {point.label}
+                                </p>
+                                <p style={{
+                                    fontSize: 14,
+                                    color: 'var(--text-secondary)',
+                                    lineHeight: 1.65,
+                                    margin: 0,
+                                }}>
+                                    {point.detail}
+                                </p>
+                            </div>
+                        ))}
                     </div>
                 </section>
 
@@ -431,6 +540,108 @@ export default function FeaturesPage() {
                                 </div>
                             ))}
                         </div>
+                    </div>
+                </section>
+
+                {/* ── Insights Dashboard ────────────────────── */}
+                <section style={{
+                    padding: 'clamp(48px, 8vw, 96px) clamp(16px, 5vw, 80px)',
+                    maxWidth: 1100,
+                    margin: '0 auto',
+                    borderTop: '0.5px solid var(--border)',
+                }}>
+                    <p style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.1em',
+                        color: 'var(--text-muted)',
+                        marginBottom: 12,
+                    }}>
+                        Analytics
+                    </p>
+                    <h2 style={{
+                        fontSize: 'clamp(24px, 3.5vw, 38px)',
+                        fontWeight: 700,
+                        lineHeight: 1.2,
+                        marginBottom: 16,
+                        color: 'var(--text-primary)',
+                        maxWidth: 640,
+                    }}>
+                        Know exactly what is working.
+                    </h2>
+                    <p style={{
+                        fontSize: 17,
+                        color: 'var(--text-secondary)',
+                        lineHeight: 1.7,
+                        marginBottom: 48,
+                        maxWidth: 580,
+                    }}>
+                        Track confirmation rates, no-show reduction, channel
+                        performance, and estimated revenue recovered — all in
+                        one live dashboard updated in real time.
+                    </p>
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                        gap: 28,
+                    }}>
+                        {[
+                            {
+                                stat: '60%',
+                                label: 'Average no-show reduction',
+                                detail:
+                                    'See how many potential no-shows were converted to confirmations by your reminder campaigns.',
+                            },
+                            {
+                                stat: '3x',
+                                label: 'More confirmed bookings',
+                                detail:
+                                    'Track confirmation rate week over week and identify which channels and messages drive the most RSVPs.',
+                            },
+                            {
+                                stat: '80%',
+                                label: 'Fewer manual follow-ups',
+                                detail:
+                                    'Measure time saved by automations and see how much revenue was recovered from at-risk appointments.',
+                            },
+                        ].map((card) => (
+                            <div
+                                key={card.label}
+                                style={{
+                                    padding: '28px 24px',
+                                    borderRadius: 12,
+                                    border: '0.5px solid var(--border)',
+                                    background: 'var(--bg-secondary)',
+                                }}
+                            >
+                                <p style={{
+                                    fontSize: 32,
+                                    fontWeight: 700,
+                                    color: 'var(--text-primary)',
+                                    marginBottom: 6,
+                                    lineHeight: 1,
+                                }}>
+                                    {card.stat}
+                                </p>
+                                <p style={{
+                                    fontSize: 14,
+                                    fontWeight: 600,
+                                    color: 'var(--text-primary)',
+                                    marginBottom: 10,
+                                }}>
+                                    {card.label}
+                                </p>
+                                <p style={{
+                                    fontSize: 14,
+                                    color: 'var(--text-secondary)',
+                                    lineHeight: 1.65,
+                                    margin: 0,
+                                }}>
+                                    {card.detail}
+                                </p>
+                            </div>
+                        ))}
                     </div>
                 </section>
 

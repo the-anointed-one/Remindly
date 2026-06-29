@@ -5,10 +5,9 @@ import { GoogleCalendarProvider } from './providers/google-calendar.provider';
 import { OutlookCalendarProvider } from './providers/outlook-calendar.provider';
 import { ReminderModule } from '../reminder/reminder.module';
 import { AutomationModule } from '../automation/automation.module';
-import { PredictionModule } from '../prediction/prediction.module';
 
 @Module({
-  imports: [ReminderModule, AutomationModule, PredictionModule],
+  imports: [ReminderModule, AutomationModule],
   controllers: [CalendarIntegrationController],
   providers: [
     CalendarIntegrationService,

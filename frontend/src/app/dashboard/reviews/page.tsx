@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import FeatureBanner from '@/components/FeatureBanner';
 import Icon from '@/components/ui/Icon';
+import EmptyState from '@/components/EmptyState';
 import { faChartBar, faSmile, faStar, faExclamationTriangle, faInbox, faCheck, faTimes } from '@fortawesome/free-solid-svg-icons';
 
 // ── Types ────────────────────────────────────
@@ -398,12 +399,13 @@ export default function ReviewsPage() {
                         <Spinner />
                     </div>
                 ) : responses.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '48px 32px' }}>
-                        <div style={{ fontSize: 36, marginBottom: 12, color: 'var(--text-muted)' }}><Icon icon={faInbox} /></div>
-                        <p style={{ color: 'var(--text-muted)', fontSize: 15 }}>
-                            No feedback responses yet. They'll appear here after clients submit feedback.
-                        </p>
-                    </div>
+                    <EmptyState
+                        title="No reviews or feedback yet"
+                        description="Your reputation data will appear here once customers start responding to your feedback requests. Send your first request to get started."
+                        icon={faStar}
+                        ctaLabel="Go to Contacts"
+                        ctaHref="/dashboard/contacts"
+                    />
                 ) : (
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

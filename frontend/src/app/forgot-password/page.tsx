@@ -13,16 +13,23 @@ export default function ForgotPasswordPage() {
     const [loading, setLoading] = useState(false);
     const [sent, setSent] = useState(false);
     const [error, setError] = useState('');
+    const [details, setDetails] = useState('');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setDetails('');
         setLoading(true);
         try {
             await api.post('/auth/forgot-password', { email });
             setSent(true);
         } catch (err: any) {
-            setError(err?.response?.data?.message || 'Something went wrong. Please try again.');
+            console.error('[Forgot Password] Error:', err);
+            const msg = err?.response?.data?.message || 'Something went wrong. Please try again.';
+            setError(msg);
+            if (err.response?.data) {
+                setDetails(JSON.stringify(err.response.data, null, 2));
+            }
         } finally {
             setLoading(false);
         }
@@ -61,7 +68,21 @@ export default function ForgotPasswordPage() {
                             <h1 className={styles.title}>Forgot password?</h1>
                             <p className={styles.subtitle}>Enter your email and we'll send you a reset link.</p>
 
-                            {error && <div className={styles.error}>{error}</div>}
+                            {error && (
+                                <div className={styles.error} style={{ marginBottom: 16 }}>
+                                    <div style={{ fontWeight: 800, marginBottom: 4 }}>Error</div>
+                                    <div>{error}</div>
+                                    {details && (
+                                        <pre style={{ 
+                                            marginTop: 8, padding: 8, background: 'rgba(0,0,0,0.2)', 
+                                            borderRadius: 4, fontSize: 10, overflowX: 'auto',
+                                            textAlign: 'left', whiteSpace: 'pre-wrap'
+                                        }}>
+                                            {details}
+                                        </pre>
+                                    )}
+                                </div>
+                            )}
 
                             <form onSubmit={handleSubmit} className={styles.form}>
                                 <div className="input-group">

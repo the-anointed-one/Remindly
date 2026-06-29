@@ -110,6 +110,7 @@ export default function EventDetailPage() {
     const [replacingParticipantId, setReplacingParticipantId] = useState<string | null>(null);
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+    const [suggestionsError, setSuggestionsError] = useState(false);
     const [performingReplacement, setPerformingReplacement] = useState(false);
 
     const filteredParticipants = useMemo(() => {
@@ -169,12 +170,19 @@ export default function EventDetailPage() {
     const openReplaceModal = async (participantId: string) => {
         setReplacingParticipantId(participantId);
         setReplaceModalOpen(true);
+        fetchSuggestions();
+    };
+
+    const fetchSuggestions = async () => {
         setLoadingSuggestions(true);
+        setSuggestionsError(false);
         try {
             const res = await api.get(`/events/${id}/suggest-replacements?limit=5`);
             setSuggestions(res.data);
         } catch (err) {
             console.error('Failed to fetch suggestions', err);
+            setSuggestions([]);
+            setSuggestionsError(true);
         } finally {
             setLoadingSuggestions(false);
         }
@@ -293,6 +301,7 @@ export default function EventDetailPage() {
                         disabled={statusChanging}
                         onChange={e => handleStatusChange(e.target.value)}
                         className="input"
+                        title="Change the publication status of this event."
                         style={{ fontSize: 13, padding: '6px 10px', cursor: 'pointer', minWidth: 130 }}
                     >
                         <option value="DRAFT">Draft</option>
@@ -375,6 +384,7 @@ export default function EventDetailPage() {
                                 type="text"
                                 placeholder="Search Name, Phone, Email, Tag..."
                                 className="input"
+                                title="Filter the participant list."
                                 style={{ fontSize: 13, padding: '6px 12px', minWidth: 200 }}
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
@@ -383,6 +393,7 @@ export default function EventDetailPage() {
                                 className="input"
                                 style={{ fontSize: 13, padding: '6px 10px', minWidth: 120 }}
                                 value={statusFilter}
+                                title="Filter participants by their RSVP status."
                                 onChange={e => setStatusFilter(e.target.value)}
                             >
                                 <option value="all">All Status</option>
@@ -572,6 +583,7 @@ export default function EventDetailPage() {
                             className="input"
                             style={{ minHeight: 120, fontSize: 14, marginBottom: 20, width: '100%', padding: '12px' }}
                             placeholder="Type your message here..."
+                            title="Message content for the smart follow-up."
                             value={followUpMessage}
                             onChange={(e) => setFollowUpMessage(e.target.value)}
                         />
@@ -609,6 +621,11 @@ export default function EventDetailPage() {
 
                         {loadingSuggestions ? (
                             <div style={{ padding: 20, textAlign: 'center' }}>Loading suggestions...</div>
+                        ) : suggestionsError ? (
+                            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                                AI suggestions unavailable.
+                                <button disabled={loadingSuggestions} onClick={fetchSuggestions} className="btn-link" style={{ marginLeft: 8, color: 'var(--brand-primary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontWeight: 600 }}>Retry</button>
+                            </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
                                 {suggestions.length === 0 ? (

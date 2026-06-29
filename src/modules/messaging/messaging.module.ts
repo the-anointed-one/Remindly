@@ -43,4 +43,4 @@ import { RsvpModule } from '../rsvp/rsvp.module';
     TemplateRendererService,
   ],
 })
-export class MessagingModule {}
+export class MessagingModule { }

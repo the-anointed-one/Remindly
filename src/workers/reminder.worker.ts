@@ -46,9 +46,9 @@ const useTwilio = !!(
 );
 const twilioClient = useTwilio
   ? twilio.default(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN,
-    )
+    process.env.TWILIO_ACCOUNT_SID,
+    process.env.TWILIO_AUTH_TOKEN,
+  )
   : null;
 
 const dlq = new Queue<ReminderJobData>(REMINDER_DLQ, { connection });
@@ -165,10 +165,10 @@ async function performSend(
       job.data.reminderId,
       appointment
         ? {
-            title: appointment.title,
-            customerName: appointment.customer?.firstName ?? 'there',
-            time: appointment.scheduledAt.toISOString(),
-          }
+          title: appointment.title,
+          customerName: appointment.customer?.firstName ?? 'there',
+          time: appointment.scheduledAt.toISOString(),
+        }
         : undefined,
       undefined,
       appointment?.customerId ?? undefined,
@@ -605,7 +605,7 @@ const worker = new Worker<ReminderJobData>(
               metadata: { channel, recipient: recipientStr },
             },
           })
-          .catch(() => {});
+          .catch(() => { });
       }
 
       if (channel === 'WHATSAPP') {

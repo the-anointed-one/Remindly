@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Icon from '@/components/ui/Icon';
 import { faRocket, faCheck } from '@fortawesome/free-solid-svg-icons';
+import { useCurrency } from '@/hooks/useCurrency';
 
 interface UpgradeModalProps {
     isOpen: boolean;
@@ -12,25 +13,27 @@ interface UpgradeModalProps {
     requiredPlan?: string;
 }
 
-const PLAN_INFO: Record<string, { name: string; price: string; color: string; features: string[] }> = {
+const PLAN_INFO: Record<string, { name: string; color: string; features: string[] }> = {
     SMS_VOICE: {
         name: 'Growth',
-        price: '₦10,000/mo',
         color: '#8b5cf6',
         features: ['Voice call reminders', 'WhatsApp messaging', '500 SMS/month'],
     },
     SMS_VOICE_AI: {
         name: 'Pro',
-        price: '₦18,000/mo',
         color: '#ec4899',
         features: ['AI template generation', 'Voice + WhatsApp', 'Unlimited SMS'],
     },
 };
 
 export function UpgradeModal({ isOpen, onClose, feature, requiredPlan }: UpgradeModalProps) {
+    const currency = useCurrency();
     if (!isOpen) return null;
 
     const plan = requiredPlan ? PLAN_INFO[requiredPlan] : null;
+    const planPrice = requiredPlan && currency.plans[requiredPlan as keyof typeof currency.plans]
+        ? `${currency.plans[requiredPlan as keyof typeof currency.plans].price}/mo`
+        : '';
 
     return (
         <>
@@ -74,7 +77,7 @@ export function UpgradeModal({ isOpen, onClose, feature, requiredPlan }: Upgrade
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <span style={{ fontWeight: 700, fontSize: 15, color: plan.color }}>{plan.name} Plan</span>
-                            <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{plan.price}</span>
+                            <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{planPrice}</span>
                         </div>
                         {plan.features.map((f, i) => (
                             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>

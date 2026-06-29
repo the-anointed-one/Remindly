@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '@/lib/api';
 import FeatureBanner from '@/components/FeatureBanner';
 import Icon from '@/components/ui/Icon';
+import EmptyState from '@/components/EmptyState';
 import { faComment, faPhone, faEnvelope, faBullhorn, faClock, faBell, faCalendar, faCog, faCheck, faInfoCircle } from '@fortawesome/free-solid-svg-icons';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
 import { HelpTip, Tooltip } from '@/components/ui/Tooltip';
@@ -648,37 +649,13 @@ export default function RemindersPage() {
 
             {/* Execution flow explanation */}
             {rules.length === 0 && !showForm && !loading && (
-                <div className="glass-card" style={{ padding: 'clamp(24px, 5vw, 40px)', textAlign: 'center', marginBottom: 24 }}>
-                    <div style={{ fontSize: 42, marginBottom: 16, color: 'var(--text-muted)' }}><Icon icon={faBell} /></div>
-                    <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>No reminder rules yet</h2>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 14, lineHeight: 1.7, maxWidth: 400, margin: '0 auto 20px' }}>
-                        Rules define when reminders are sent. Create your first rule and every new appointment will automatically trigger the right reminders.
-                    </p>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-                        {[
-                            { label: 'Appointment created', icon: <Icon icon={faCalendar} /> },
-                            { label: 'Rules evaluated', icon: <Icon icon={faCog} /> },
-                            { label: 'Jobs scheduled', icon: <Icon icon={faEnvelope} /> },
-                            { label: 'Reminders sent', icon: <Icon icon={faCheck} className="text-success" /> },
-                        ].map((step, i, arr) => (
-                            <div key={step.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: 22, marginBottom: 4 }}>{step.icon}</div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{step.label}</div>
-                                </div>
-                                {i < arr.length - 1 && (
-                                    <span style={{ color: 'var(--text-muted)', fontSize: 18, margin: '0 2px' }}>→</span>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                    <button
-                        onClick={() => { setShowForm(true); setEditingRule(null); }}
-                        className="btn btn-primary"
-                    >
-                        Create First Rule
-                    </button>
-                </div>
+                <EmptyState
+                    title="No reminder rules yet"
+                    description="Rules define when reminders are sent. Create your first rule and every new appointment will automatically trigger the right reminders."
+                    icon={faBell}
+                    ctaLabel="Create First Rule"
+                    ctaAction={() => { setShowForm(true); setEditingRule(null); }}
+                />
             )}
 
             {/* Form modal */}

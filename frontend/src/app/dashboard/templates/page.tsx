@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 import Icon from '@/components/ui/Icon';
-import { faFileAlt } from '@fortawesome/free-solid-svg-icons';
+import EmptyState from '@/components/EmptyState';
+import { faFileAlt, faLayerGroup } from '@fortawesome/free-solid-svg-icons';
 
 interface Template { id: string; name: string; channel: string; body: string; subject?: string; isActive: boolean; variables: string[]; }
 
@@ -50,7 +51,7 @@ export default function TemplatesPage() {
                         <div className="grid-2">
                             <div className="input-group">
                                 <label className="input-label">Template Name</label>
-                                <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="24h Appointment Reminder" required />
+                                <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="24h Appointment Reminder" required title="Reference name for this message template." />
                             </div>
                             <div className="input-group">
                                 <label className="input-label">Channel</label>
@@ -70,7 +71,7 @@ export default function TemplatesPage() {
                         <div className="input-group">
                             <label className="input-label">Message Body</label>
                             <textarea className="input" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })}
-                                placeholder="Hi {{customer_name}}, your {{appointment_title}} is on {{appointment_date}} at {{appointment_time}}. Reply YES to confirm." required />
+                                placeholder="Hi {{customer_name}}, your {{appointment_title}} is on {{appointment_date}} at {{appointment_time}}. Reply YES to confirm." required title="The reusable message body." />
                             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Variables: {'{{customer_name}}, {{appointment_title}}, {{appointment_date}}, {{appointment_time}}'}</span>
                         </div>
                         <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Creating...' : 'Create Template'}</button>
@@ -79,11 +80,13 @@ export default function TemplatesPage() {
             )}
 
             {loading ? <p style={{ color: 'var(--text-muted)' }}>Loading...</p> : templates.length === 0 ? (
-                <div className="card" style={{ textAlign: 'center', padding: 'clamp(20px, 4vw, 48px)' }}>
-                    <div style={{ fontSize: 48, marginBottom: 16 }}><Icon icon={faFileAlt} className="text-muted" /></div>
-                    <h3 style={{ fontSize: 18, marginBottom: 8 }}>No Templates Yet</h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Create templates or use AI to generate them.</p>
-                </div>
+                <EmptyState
+                    title="No templates yet"
+                    description="Create reusable message templates for SMS, Email, or WhatsApp. Streamline your communication by saving common responses."
+                    icon={faLayerGroup}
+                    ctaLabel="Create Template"
+                    ctaAction={() => setShowForm(true)}
+                />
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {templates.map((t) => (

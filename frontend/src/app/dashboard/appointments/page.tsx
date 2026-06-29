@@ -18,10 +18,15 @@ function useIsMobile(breakpoint = 768) {
 }
 
 import api from '@/lib/api';
+import FeatureBanner from '@/components/FeatureBanner';
 import Icon from '@/components/ui/Icon';
+import EmptyState from '@/components/EmptyState';
 import { Tooltip, HelpTip } from '@/components/ui/Tooltip';
 import TooltipField from '@/components/ui/TooltipField';
-import { faCalendar, faTag, faUsers, faLayerGroup } from '@fortawesome/free-solid-svg-icons';
+import {
+    faCalendar, faCalendarCheck, faClock, faPlus, faCheck, faTrash, faTimes, faChevronRight, faLayerGroup,
+    faTag, faUser, faUsers, faBell, faTriangleExclamation
+} from '@fortawesome/free-solid-svg-icons';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 import ContactSearchDropdown, { ContactSlim } from '@/components/messaging/ContactSearchDropdown';
@@ -346,11 +351,13 @@ export default function AppointmentsPage() {
             {loading ? (
                 <p style={{ color: 'var(--text-muted)' }}>Loading...</p>
             ) : apts.length === 0 ? (
-                <div className="card" style={{ textAlign: 'center', padding: 'clamp(20px, 4vw, 48px)' }}>
-                    <div style={{ fontSize: 48, marginBottom: 16 }}><Icon icon={faCalendar} className="text-muted" /></div>
-                    <h3 style={{ fontSize: 18, marginBottom: 8 }}>No Events Yet</h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Create your first event to get started.</p>
-                </div>
+                <EmptyState
+                    title="No appointments yet"
+                    description="Your upcoming appointments will appear here. Create your first appointment or sync with your calendar to get started."
+                    icon={faCalendarCheck}
+                    ctaLabel="New Appointment"
+                    ctaAction={() => setShowForm(true)}
+                />
             ) : (
                 <>
                     {!isMobile ? (

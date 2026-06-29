@@ -4,7 +4,6 @@ import { AppointmentService } from './appointment.service';
 import { EventLifecycleService } from './event-lifecycle.service';
 import { ReminderModule } from '../reminder/reminder.module';
 import { AutomationModule } from '../automation/automation.module';
-import { PredictionModule } from '../prediction/prediction.module';
 import { ReputationModule } from '../reputation/reputation.module';
 import { MessagingModule } from '../messaging/messaging.module';
 
@@ -12,7 +11,6 @@ import { MessagingModule } from '../messaging/messaging.module';
   imports: [
     ReminderModule,
     AutomationModule,
-    PredictionModule,
     ReputationModule,
     MessagingModule,
   ],

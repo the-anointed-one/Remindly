@@ -1,8 +1,10 @@
-node_modules
+groq-code-cli
+frontend
+.next
+frontend/.next
+frontend/node_modules
 dist
+node_modules
 .git
 .env
 *.md
-.next
-frontend/node_modules
-frontend/.next

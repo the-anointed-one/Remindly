@@ -10,6 +10,9 @@ dist/
 
 # Environment & secrets
 .env
+.env.bak
+.env.test
+*.bak
 
 # Prisma
 prisma/*.db

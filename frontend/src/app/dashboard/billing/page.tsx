@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth';
 import Link from 'next/link';
 import Icon from '@/components/ui/Icon';
 import { faComment, faPhone, faRobot } from '@fortawesome/free-solid-svg-icons';
+import { useCurrency } from '@/hooks/useCurrency';
 
 interface BillingInfo {
     plan: string;
@@ -17,14 +18,14 @@ interface BillingInfo {
     recentSubscriptions: any[];
 }
 
-const plans = [
-    { code: 'SMS', name: 'SMS', price: '₦5,000/mo', features: ['SMS reminders', '500 SMS/month', 'Basic analytics'] },
-    { code: 'SMS_VOICE', name: 'SMS + Voice', price: '₦12,000/mo', features: ['SMS + Voice', '1,000 SMS/month', 'IVR confirmation'] },
-    { code: 'SMS_VOICE_AI', name: 'SMS + Voice + AI', price: '₦25,000/mo', features: ['Full platform', 'Unlimited SMS', '50 AI/month'] },
-];
-
 export default function BillingPage() {
     const { plan: currentPlan, trialActive, trialDaysRemaining, subscriptionStatus } = useAuth();
+    const currency = useCurrency();
+    const plans = [
+        { code: 'SMS', name: 'Starter', price: `${currency.plans.SMS.price}/mo`, features: ['100 SMS reminders/month', 'Appointment management', 'Custom templates'] },
+        { code: 'SMS_VOICE', name: 'Growth', price: `${currency.plans.SMS_VOICE.price}/mo`, features: ['500 SMS reminders/month', 'Voice call reminders', 'WhatsApp messaging'] },
+        { code: 'SMS_VOICE_AI', name: 'Pro', price: `${currency.plans.SMS_VOICE_AI.price}/mo`, features: ['Unlimited SMS reminders', 'Voice + WhatsApp', 'AI template generation'] },
+    ];
     const [billing, setBilling] = useState<BillingInfo | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -36,7 +37,8 @@ export default function BillingPage() {
 
     const handleUpgrade = async (planCode: string) => {
         try {
-            const email = prompt('Enter your email for payment:');
+            const { data: profileData } = await api.get('/auth/profile');
+            const email = profileData?.email;
             if (!email) return;
             const { data } = await api.post('/billing/subscribe', { planCode, email });
             if (data.authorizationUrl) {

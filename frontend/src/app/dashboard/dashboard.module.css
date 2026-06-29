@@ -60,22 +60,8 @@
     color: var(--text-primary) !important;
 }
 
-.navItem.active,
-.navItemActive {
-    background: rgba(0, 169, 157, 0.15);
-    color: var(--primary) !important;
-    font-weight: 700;
-    border-left: 3px solid var(--primary);
-    padding-left: 9px; /* compensate for 3px border */
-}
 
-.navItemInactive {
-    color: var(--text-secondary) !important;
-}
-
-.navItem.onboardingHighlight,
-.navItemActive.onboardingHighlight,
-.navItemInactive.onboardingHighlight {
+.onboardingHighlight {
     animation: onboarding-pulse 1.8s ease-in-out infinite;
     box-shadow: 0 0 18px rgba(0, 169, 157, 0.35);
     border: 1px solid rgba(0, 169, 157, 0.4);

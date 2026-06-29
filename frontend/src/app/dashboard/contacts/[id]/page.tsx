@@ -53,6 +53,7 @@ function EditField({ label, value, onChange, type = 'text', placeholder }: any) 
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={placeholder}
+                title={`Enter ${label.toLowerCase()}`}
                 style={{
                     width: '100%', padding: '8px 12px', borderRadius: 8,
                     background: 'var(--bg-secondary)', border: '1px solid var(--border)',
@@ -278,6 +279,7 @@ export default function ContactProfilePage() {
                                 <div>
                                     <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 5, display: 'block' }}>Notes</label>
                                     <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4}
+                                        title="Internal notes about this contact."
                                         style={{ width: '100%', padding: '10px 12px', borderRadius: 10, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14, resize: 'none' }} />
                                 </div>
                             </div>
@@ -348,6 +350,7 @@ export default function ContactProfilePage() {
                                                             placeholder="Search or create group..."
                                                             value={groupSearch}
                                                             onChange={(e) => setGroupSearch(e.target.value)}
+                                                            title="Search for an existing group or type to create a new one."
                                                             style={{
                                                                 width: '100%', padding: '6px 10px', borderRadius: 7, fontSize: 13,
                                                                 background: 'var(--bg-secondary)', border: '1px solid var(--border)',

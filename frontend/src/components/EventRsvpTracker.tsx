@@ -40,23 +40,26 @@ export function EventRsvpTracker({ eventId, onStatsLoaded }: EventRsvpTrackerPro
         };
 
         fetchStats();
-        // Poll every 10 seconds for live updates
-        const interval = setInterval(fetchStats, 10000);
+        // Poll every 30 seconds for live updates
+        const interval = setInterval(fetchStats, 30000);
         return () => clearInterval(interval);
     }, [eventId, onStatsLoaded]);
 
-    if (loading || !stats) {
-        return <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Loading RSVP stats...</div>;
-    }
+    const isLoading = loading && !stats;
+    const confirmed = isLoading ? '--' : (stats?.confirmed ?? 0);
+    const pending = isLoading ? '--' : (stats?.pending ?? 0);
+    const invited = isLoading ? '--' : (stats?.invited ?? 0);
+    const cancelled = isLoading ? '--' : (stats?.cancelled ?? 0);
+    const total = isLoading ? '--' : (stats?.total ?? 0);
 
     const rsvpItems = [
-        { label: 'Confirmed', value: stats.confirmed, icon: faCircleCheck, color: '#22c55e' },
-        { label: 'Pending', value: stats.pending, icon: faClock, color: '#f59e0b' },
-        { label: 'Invited', value: stats.invited, icon: faUsers, color: '#6b7280' },
-        { label: 'Declined', value: stats.cancelled, icon: faXmark, color: '#ef4444' },
+        { label: 'Confirmed', value: confirmed, icon: faCircleCheck, color: '#22c55e' },
+        { label: 'Pending', value: pending, icon: faClock, color: '#f59e0b' },
+        { label: 'Invited', value: invited, icon: faUsers, color: '#6b7280' },
+        { label: 'Declined', value: cancelled, icon: faXmark, color: '#ef4444' },
     ];
 
-    const confirmationPercentage = stats.total > 0 ? Math.round((stats.confirmed / stats.total) * 100) : 0;
+    const confirmationPercentage = stats && stats.total > 0 ? Math.round((stats.confirmed / stats.total) * 100) : 0;
 
     return (
         <div style={{
@@ -104,7 +107,7 @@ export function EventRsvpTracker({ eventId, onStatsLoaded }: EventRsvpTrackerPro
                             {item.label}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                            {stats.total > 0 ? Math.round((item.value / stats.total) * 100) : 0}%
+                            {(stats && stats.total > 0 && typeof item.value === 'number') ? Math.round((item.value / stats.total) * 100) : 0}%
                         </div>
                     </div>
                 ))}
@@ -136,7 +139,6 @@ export function EventRsvpTracker({ eventId, onStatsLoaded }: EventRsvpTrackerPro
                 </div>
             </div>
 
-            {/* Summary */}
             <div style={{
                 fontSize: 12,
                 color: 'var(--text-muted)',
@@ -144,9 +146,9 @@ export function EventRsvpTracker({ eventId, onStatsLoaded }: EventRsvpTrackerPro
                 paddingTop: 12,
                 borderTop: '1px solid var(--border-color)',
             }}>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{stats.confirmed}</span> confirmed,{' '}
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{stats.pending}</span> pending,{' '}
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{stats.total}</span> total
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{confirmed}</span> confirmed,{' '}
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{pending}</span> pending,{' '}
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{total}</span> total
             </div>
         </div>
     );

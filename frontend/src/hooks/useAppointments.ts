@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 export interface AppointmentRaw {
   id: string;
@@ -31,10 +32,19 @@ export const useAppointments = (tenantId?: string): UseAppointmentsResult => {
   const [data, setData] = useState<AppointmentRaw[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
-  const fetchAppointments = useCallback(async () => {
+  const lastFetchedRef = useRef<number>(0);
+  const STALE_TIME = 60000;
+
+  const fetchAppointments = useCallback(async (force = false) => {
     if (!tenantId) {
       setData([]);
+      setIsLoading(false);
+      return;
+    }
+
+    if (!force && Date.now() - lastFetchedRef.current < STALE_TIME && data.length > 0) {
       setIsLoading(false);
       return;
     }
@@ -53,11 +63,14 @@ export const useAppointments = (tenantId?: string): UseAppointmentsResult => {
         ...(resp.data?.events ?? []),
       ];
       setData(entries);
+      lastFetchedRef.current = Date.now();
     } catch (err: unknown) {
       console.warn('[useAppointments] calendar fetch failed, falling back to /appointments', err);
       try {
         const resp = await api.get('/appointments');
+        // Handle both plain array and { data: Appointment[] } shapes
         setData(Array.isArray(resp.data) ? resp.data : resp.data?.data ?? []);
+        lastFetchedRef.current = Date.now();
       } catch (fallbackErr: unknown) {
         console.error('[useAppointments] fallback /appointments failed', fallbackErr);
         setData([]);
@@ -66,15 +79,18 @@ export const useAppointments = (tenantId?: string): UseAppointmentsResult => {
     } finally {
       setIsLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, data]);
 
-  useEffect(() => { void fetchAppointments(); }, [fetchAppointments]);
+  useEffect(() => {
+    if (!isAuthenticated || authLoading) return;
+    void fetchAppointments();
+  }, [isAuthenticated, authLoading, fetchAppointments]);
 
   return {
     data,
     isLoading,
     error,
-    refetch: fetchAppointments,
+    refetch: () => fetchAppointments(true),
     queryKey: ['appointments', tenantId || ''],
   };
 };

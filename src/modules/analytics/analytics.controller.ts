@@ -102,6 +102,12 @@ export class AnalyticsController {
     return this.analyticsService.getRecentActivity(tenantId, limit);
   }
 
+  /** GET /analytics/onboarding-progress — checklist items for dashboard home */
+  @Get('onboarding-progress')
+  getOnboardingProgress(@CurrentUser('tenantId') tenantId: string) {
+    return this.analyticsService.getOnboardingProgress(tenantId);
+  }
+
   /** GET /analytics — legacy alias */
   @Get()
   findAll(

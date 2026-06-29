@@ -1,7 +1,8 @@
+'use client';
+
 import Navbar from '@/components/marketing/Navbar';
 import Footer from '@/components/marketing/Footer';
 import Link from 'next/link';
-import type { Metadata } from 'next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faCheck, faCommentSms, faPhone, faRobot,
@@ -10,21 +11,13 @@ import {
     faArrowRight, faCalendarCheck,
 } from '@fortawesome/free-solid-svg-icons';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
-
-export const metadata: Metadata = {
-    title: 'Pricing — Meetora',
-    description: 'Transparent USD pricing for attendance automation. Starter $19/mo, Growth $49/mo, Pro $99/mo. 14-day free trial on all plans.',
-    openGraph: {
-        title: 'Pricing — Meetora',
-        description: 'Transparent USD pricing for attendance automation. Prevent 3–5 no-shows and Meetora pays for itself.',
-    },
-};
+import { useCurrency } from '@/hooks/useCurrency';
 
 const PLANS = [
     {
         id: 'starter',
         name: 'Starter',
-        price: '$19',
+        currencyKey: 'SMS' as const,
         period: '/month',
         desc: 'For small businesses automating their first event reminders.',
         icon: faCommentSms,
@@ -45,7 +38,7 @@ const PLANS = [
     {
         id: 'growth',
         name: 'Growth',
-        price: '$49',
+        currencyKey: 'SMS_VOICE' as const,
         period: '/month',
         desc: 'For growing teams that need multi-channel reach and audience segmentation.',
         icon: faChartLine,
@@ -66,7 +59,7 @@ const PLANS = [
     {
         id: 'pro',
         name: 'Pro',
-        price: '$99',
+        currencyKey: 'SMS_VOICE_AI' as const,
         period: '/month',
         desc: 'Full-stack attendance automation with AI, voice, and review management.',
         icon: faRobot,
@@ -85,13 +78,6 @@ const PLANS = [
         cta: 'Start Free Trial',
         popular: false,
     },
-];
-
-const USAGE_RATES = [
-    { icon: faCommentSms, channel: 'SMS', rate: '$0.02 – $0.05', unit: 'per message', color: '#3b82f6', note: 'Varies by destination country' },
-    { icon: faPhone, channel: 'Voice', rate: '$0.013', unit: 'per minute', color: '#8b5cf6', note: 'IVR confirmation included' },
-    { icon: faWhatsapp, channel: 'WhatsApp', rate: '$0.005 – $0.08', unit: 'per conversation', color: '#22c55e', note: 'Meta Business API pricing' },
-    { icon: faRobot, channel: 'AI Tokens', rate: 'Token-based', unit: 'GPT-4 rate', color: '#f59e0b', note: '50 requests/mo included on Pro' },
 ];
 
 const FAQS = [
@@ -122,6 +108,15 @@ const FAQS = [
 ];
 
 export default function PricingPage() {
+    const currency = useCurrency();
+
+    const USAGE_RATES = [
+        { icon: faCommentSms, channel: 'SMS', rate: currency.perMessage, unit: 'per message', color: '#3b82f6', note: 'Varies by destination country' },
+        { icon: faPhone, channel: 'Voice', rate: currency.perMinute, unit: 'per minute', color: '#8b5cf6', note: 'IVR confirmation included' },
+        { icon: faWhatsapp, channel: 'WhatsApp', rate: currency.perWhatsApp, unit: 'per conversation', color: '#22c55e', note: 'Meta Business API pricing' },
+        { icon: faRobot, channel: 'AI Tokens', rate: 'Token-based', unit: 'GPT-4 rate', color: '#f59e0b', note: '50 requests/mo included on Pro' },
+    ];
+
     return (
         <>
             <Navbar />
@@ -163,6 +158,40 @@ export default function PricingPage() {
                 {/* ── Plans ──────────────────────────────────── */}
                 <section style={{ padding: '80px 0' }}>
                     <div className="container">
+                        <div style={{
+                            textAlign: 'center',
+                            marginBottom: 48,
+                        }}>
+                            <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                padding: '14px 28px',
+                                borderRadius: 12,
+                                border: '0.5px solid var(--border)',
+                                background: 'var(--bg-secondary)',
+                                fontSize: 14,
+                                color: 'var(--text-secondary)',
+                                flexWrap: 'wrap',
+                                justifyContent: 'center',
+                            }}>
+                                <span>
+                                    <strong style={{ color: 'var(--text-primary)' }}>
+                                        How pricing works:
+                                    </strong>
+                                </span>
+                                <span style={{ margin: '0 4px' }}>Pick a plan →</span>
+                                <span style={{ margin: '0 4px' }}>Send reminders →</span>
+                                <span style={{ margin: '0 4px' }}>Pay for usage →</span>
+                                <span style={{
+                                    color: 'var(--text-primary)',
+                                    fontWeight: 500,
+                                    margin: '0 4px',
+                                }}>
+                                    Cancel anytime
+                                </span>
+                            </div>
+                        </div>
                         <div className="pricing-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24, alignItems: 'start' }}>
                             {PLANS.map((plan) => (
                                 <div
@@ -212,14 +241,11 @@ export default function PricingPage() {
 
                                     <div style={{ marginBottom: 24 }}>
                                         <span style={{ fontSize: 42, fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1 }}>
-                                            {plan.price}
+                                            {currency.plans[plan.currencyKey].price}
                                         </span>
                                         <span style={{ fontSize: 14, color: 'var(--text-muted)', marginLeft: 4 }}>
                                             {plan.period}
                                         </span>
-                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                                            + usage charges (see below)
-                                        </div>
                                     </div>
 
                                     <ul style={{ listStyle: 'none', marginBottom: 28, display: 'flex', flexDirection: 'column', gap: 11, flex: 1 }}>
@@ -230,6 +256,18 @@ export default function PricingPage() {
                                             </li>
                                         ))}
                                     </ul>
+
+                                    <p style={{
+                                        fontSize: 12,
+                                        color: 'var(--text-muted)',
+                                        marginTop: 16,
+                                        marginBottom: 16,
+                                        lineHeight: 1.6,
+                                    }}>
+                                        + usage costs for SMS, WhatsApp, Voice, and AI.
+                                        <br />
+                                        Pay only for what you send.
+                                    </p>
 
                                     <Link
                                         href="/register"
@@ -249,42 +287,150 @@ export default function PricingPage() {
                 </section>
 
                 {/* ── Usage Pricing ─────────────────────────── */}
-                <section style={{ padding: '72px 0', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
-                    <div className="container">
-                        <div style={{ textAlign: 'center', marginBottom: 48 }}>
-                            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>
-                                USAGE PRICING
-                            </p>
-                            <h2 style={{ fontSize: 'clamp(24px, 3.5vw, 36px)', fontWeight: 900, letterSpacing: '-1px', marginBottom: 14 }}>
-                                Pay Only for What You Send
-                            </h2>
-                            <p style={{ fontSize: 15, color: 'var(--text-secondary)', maxWidth: 500, margin: '0 auto' }}>
-                                Carrier costs are passed through at near-wholesale rates with complete transparency.
-                                No bundled credits, no surprises.
-                            </p>
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, maxWidth: 900, margin: '0 auto' }}>
-                            {USAGE_RATES.map(r => (
-                                <div key={r.channel} style={{
-                                    background: 'var(--bg-card)', border: '1px solid var(--border)',
-                                    borderRadius: 16, padding: '24px 20px',
-                                    borderLeft: `4px solid ${r.color}`,
+                <section style={{
+                    padding: 'clamp(32px, 5vw, 64px) clamp(16px, 5vw, 80px)',
+                    maxWidth: 860,
+                    margin: '0 auto',
+                    borderTop: '0.5px solid var(--border)',
+                }}>
+                    <p style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.1em',
+                        color: 'var(--text-muted)',
+                        textAlign: 'center',
+                        marginBottom: 12,
+                    }}>
+                        Usage-based billing
+                    </p>
+                    <h3 style={{
+                        fontSize: 'clamp(20px, 2.5vw, 28px)',
+                        fontWeight: 700,
+                        color: 'var(--text-primary)',
+                        textAlign: 'center',
+                        marginBottom: 12,
+                    }}>
+                        Pay only for what you send
+                    </h3>
+                    <p style={{
+                        fontSize: 15,
+                        color: 'var(--text-secondary)',
+                        textAlign: 'center',
+                        lineHeight: 1.7,
+                        marginBottom: 40,
+                        maxWidth: 520,
+                        margin: '0 auto 40px',
+                    }}>
+                        Your subscription covers the platform. Messaging costs
+                        are billed separately based on actual usage — so you
+                        only pay when you send.
+                    </p>
+
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gap: 16,
+                    }}>
+                        {[
+                            {
+                                channel: 'SMS',
+                                rate: 'Per message',
+                                detail: 'Billed per outbound SMS sent via Twilio.',
+                                color: '#0F6E56',
+                                bg: '#E1F5EE',
+                            },
+                            {
+                                channel: 'WhatsApp',
+                                rate: 'Per conversation',
+                                detail: '24-hour conversation window billed once per contact.',
+                                color: '#185FA5',
+                                bg: '#E6F1FB',
+                            },
+                            {
+                                channel: 'Voice',
+                                rate: 'Per minute',
+                                detail: 'Billed per minute of outbound voice call duration.',
+                                color: '#854F0B',
+                                bg: '#FAEEDA',
+                            },
+                            {
+                                channel: 'AI',
+                                rate: 'Per use',
+                                detail: 'Message generation and review responses billed per call.',
+                                color: '#993556',
+                                bg: '#FBEAF0',
+                            },
+                        ].map((item) => (
+                            <div
+                                key={item.channel}
+                                style={{
+                                    padding: '20px',
+                                    borderRadius: 12,
+                                    border: '0.5px solid var(--border)',
+                                    background: 'var(--bg-secondary)',
+                                }}
+                            >
+                                <div style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: 8,
+                                    background: item.bg,
+                                    marginBottom: 12,
                                 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                                        <FontAwesomeIcon icon={r.icon} style={{ color: r.color, fontSize: 18 }} />
-                                        <span style={{ fontWeight: 800, fontSize: 15 }}>{r.channel}</span>
-                                    </div>
-                                    <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 4, color: 'var(--text-primary)' }}>
-                                        {r.rate}
-                                    </div>
-                                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>{r.unit}</div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-secondary)', padding: '4px 8px', borderRadius: 6 }}>
-                                        {r.note}
-                                    </div>
+                                    <span style={{
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                        color: item.color,
+                                    }}>
+                                        {item.channel.slice(0, 2)}
+                                    </span>
                                 </div>
-                            ))}
-                        </div>
+                                <p style={{
+                                    fontSize: 15,
+                                    fontWeight: 600,
+                                    color: 'var(--text-primary)',
+                                    marginBottom: 4,
+                                }}>
+                                    {item.channel}
+                                </p>
+                                <p style={{
+                                    fontSize: 13,
+                                    fontWeight: 500,
+                                    color: item.color,
+                                    marginBottom: 8,
+                                }}>
+                                    {item.rate}
+                                </p>
+                                <p style={{
+                                    fontSize: 13,
+                                    color: 'var(--text-secondary)',
+                                    lineHeight: 1.6,
+                                    margin: 0,
+                                }}>
+                                    {item.detail}
+                                </p>
+                            </div>
+                        ))}
                     </div>
+
+                    <p style={{
+                        fontSize: 13,
+                        color: 'var(--text-muted)',
+                        textAlign: 'center',
+                        marginTop: 24,
+                    }}>
+                        Exact rates depend on your region and Twilio pricing.
+                        <a
+                            href="/register"
+                            style={{ color: 'var(--text-primary)', marginLeft: 4 }}
+                        >
+                            Start free to see your rates.
+                        </a>
+                    </p>
                 </section>
 
                 {/* ── ROI Section ───────────────────────────── */}

@@ -40,11 +40,8 @@ import { ReschedulingModule } from './modules/rescheduling/rescheduling.module';
 import { BookingWidgetModule } from './modules/booking-widget/booking-widget.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { LocationsModule } from './modules/locations/locations.module';
-import { ReferralModule } from './modules/referral/referral.module';
 import { AutomationModule } from './modules/automation/automation.module';
-import { PredictionModule } from './modules/prediction/prediction.module';
 import { ReputationModule } from './modules/reputation/reputation.module';
-import { ReactivationModule } from './modules/reactivation/reactivation.module';
 import { ChannelStrategyModule } from './modules/channel-strategy/channel-strategy.module';
 import { RevenueAnalyticsModule } from './modules/revenue-analytics/revenue-analytics.module';
 import { CampaignModule } from './modules/campaign/campaign.module';
@@ -88,11 +85,8 @@ import { RsvpModule } from './modules/rsvp/rsvp.module';
     BookingWidgetModule,
     ComplianceModule,
     LocationsModule,
-    ReferralModule,
     AutomationModule,
-    PredictionModule,
     ReputationModule,
-    ReactivationModule,
     ChannelStrategyModule,
     RevenueAnalyticsModule,
     CampaignModule,

@@ -3,9 +3,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
 import FeatureBanner from '@/components/FeatureBanner';
+import EmptyState from '@/components/EmptyState';
 import Icon from '@/components/ui/Icon';
-import { faComment, faPhone, faEnvelope, faChartLine, faCalendar, faCheck, faShieldHalved, faCoins, faChartBar } from '@fortawesome/free-solid-svg-icons';
+import {
+    faComment, faPhone, faEnvelope, faChartLine, faCalendar, faCheck, faShieldHalved, faCoins, faChartBar,
+    faArrowTrendUp, faArrowTrendDown, faMinus, faClock, faUsers, faTag
+} from '@fortawesome/free-solid-svg-icons';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
+import { useCurrency } from '@/hooks/useCurrency';
 
 // ── Types ────────────────────────────────────
 
@@ -301,6 +306,7 @@ function ChannelPerformance({ data }: { data: ChannelStat[] }) {
 // ── Revenue over time chart ──────────────────
 
 function RevenueOverTimeChart({ data, days }: { data: RevenueTimePoint[]; days: number }) {
+    const currency = useCurrency();
     const W = 800, H = 200;
     const padL = 56, padR = 16, padT = 12, padB = 32;
     const plotW = W - padL - padR;
@@ -328,8 +334,7 @@ function RevenueOverTimeChart({ data, days }: { data: RevenueTimePoint[]; days: 
     const labelIdxs = data.map((_, i) => i).filter((i) => i === 0 || i === n - 1 || i % labelEvery === 0);
 
     function fmtRevLabel(v: number): string {
-        if (v >= 1000) return `$${(v / 1000).toFixed(1)}k`;
-        return `$${v}`;
+        return currency.formatAmount(v);
     }
 
     return (
@@ -360,7 +365,7 @@ function RevenueOverTimeChart({ data, days }: { data: RevenueTimePoint[]; days: 
                     rx={3}
                     fill="url(#revBarGrad)"
                 >
-                    <title>{d.label}: {d.revenueRecovered > 0 ? `$${d.revenueRecovered.toLocaleString()}` : '$0'} · Cumulative: ${d.cumulative.toLocaleString()}</title>
+                    <title>{d.label}: {d.revenueRecovered > 0 ? `${currency.symbol}${d.revenueRecovered.toLocaleString()}` : `${currency.symbol}0`} · Cumulative: {currency.symbol}{d.cumulative.toLocaleString()}</title>
                 </rect>
             ))}
 
@@ -495,6 +500,7 @@ function PageSection({ title, subtitle }: { title: string; subtitle: string }) {
 // ── Main page ────────────────────────────────
 
 export default function AnalyticsPage() {
+    const currency = useCurrency();
     const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
     const [rateData, setRateData] = useState<RatePoint[]>([]);
     const [noShowData, setNoShowData] = useState<WeekPoint[]>([]);
@@ -512,7 +518,7 @@ export default function AnalyticsPage() {
 
     // Load standard analytics
     useEffect(() => {
-        api.get('/analytics/dashboard').then(({ data }) => setMetrics(data)).catch(() => { });
+        api.get('/analytics/hero-metrics').then(({ data }) => setMetrics(data)).catch(() => { });
         api.get('/analytics/channel-performance').then(({ data }) => setChannelData(data)).catch(() => { });
         api.get('/analytics/no-show-reduction?weeks=8').then(({ data }) => setNoShowData(data)).catch(() => { });
     }, []);
@@ -543,6 +549,7 @@ export default function AnalyticsPage() {
     useEffect(() => { loadRate(period); }, [period, loadRate]);
     useEffect(() => { loadRevenueTime(revPeriod); }, [revPeriod, loadRevenueTime]);
 
+    const hasData = metrics && metrics.allTime.totalAppointments > 0;
     const w = metrics?.week;
     const allTime = metrics?.allTime;
 
@@ -556,48 +563,60 @@ export default function AnalyticsPage() {
                 </p>
             </div>
 
-            <FeatureBanner
-                src="/images/features/analytics-dashboard.jpg"
-                title="Business Analytics"
-                description="Track confirmation rates over time, measure no-show reduction week by week, and compare delivery performance across SMS, WhatsApp, and Voice channels."
-                accent="#6B3E2E"
-            />
+            {!loading && !hasData ? (
+                <EmptyState
+                    title="No analytics data yet"
+                    description="Analytics will appear here once your first reminder messages are sent. Start a campaign or sync your appointments to see performance insights."
+                    icon={faChartBar}
+                    ctaLabel="Go to Campaigns"
+                    ctaHref="/dashboard/campaigns"
+                />
+            ) : (
+                <>
+                    <FeatureBanner
+                        src="/images/features/analytics-dashboard.jpg"
+                        title="Business Analytics"
+                        description="Track confirmation rates over time, measure no-show reduction week by week, and compare delivery performance across SMS, WhatsApp, and Voice channels."
+                        accent="#6B3E2E"
+                    />
 
-            {/* ── Hero metrics ───────────────────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
-                <MetricCard
-                    icon={<Icon icon={faCalendar} />}
-                    label="Appointments This Week"
-                    value={w?.appointments.value ?? '—'}
-                    sub={allTime ? `${allTime.totalAppointments.toLocaleString()} all-time` : undefined}
-                    trend={w?.appointments.trend}
-                    accent="#6B3E2E"
-                />
-                <MetricCard
-                    icon={<Icon icon={faCheck} />}
-                    label="Confirmed Automatically"
-                    value={w ? `${w.confirmed.value} (${w.confirmed.rate}%)` : '—'}
-                    sub={allTime ? `${allTime.confirmationRate}% all-time rate` : undefined}
-                    trend={w?.confirmed.trend}
-                    accent="#6B3E2E"
-                />
-                <MetricCard
-                    icon={<Icon icon={faShieldHalved} />}
-                    label="No-Shows Prevented"
-                    value={w?.noShowsPrevented.value ?? '—'}
-                    sub="Appointments confirmed via reminder"
-                    trend={w?.noShowsPrevented.trend}
-                    accent="#F7941D"
-                />
-                <MetricCard
-                    icon={<Icon icon={faCoins} />}
-                    label="Revenue Recovered"
-                    value={w?.revenueSaved.formatted ?? '—'}
-                    sub="Est. based on avg appointment value"
-                    trend={w?.revenueSaved.trend}
-                    accent="#10b981"
-                />
-            </div>
+                    {/* ── Hero metrics ───────────────────────── */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
+                        <MetricCard
+                            icon={<Icon icon={faCalendar} />}
+                            label="Appointments This Week"
+                            value={w?.appointments.value ?? '—'}
+                            sub={allTime ? `${allTime.totalAppointments.toLocaleString()} all-time` : undefined}
+                            trend={w?.appointments.trend}
+                            accent="#6B3E2E"
+                        />
+                        <MetricCard
+                            icon={<Icon icon={faCheck} />}
+                            label="Confirmed Automatically"
+                            value={w ? `${w.confirmed.value} (${w.confirmed.rate}%)` : '—'}
+                            sub={allTime ? `${allTime.confirmationRate}% all-time rate` : undefined}
+                            trend={w?.confirmed.trend}
+                            accent="#6B3E2E"
+                        />
+                        <MetricCard
+                            icon={<Icon icon={faShieldHalved} />}
+                            label="No-Shows Prevented"
+                            value={w?.noShowsPrevented.value ?? '—'}
+                            sub="Appointments confirmed via reminder"
+                            trend={w?.noShowsPrevented.trend}
+                            accent="#F7941D"
+                        />
+                        <MetricCard
+                            icon={<Icon icon={faCoins} />}
+                            label="Revenue Recovered"
+                            value={w?.revenueSaved.formatted ?? '—'}
+                            sub="Est. based on avg appointment value"
+                            trend={w?.revenueSaved.trend}
+                            accent="#10b981"
+                        />
+                    </div>
+                </>
+            )}
 
             {/* ── Confirmation rate over time ─────────── */}
             <div className="glass-card" style={{ padding: '28px clamp(16px, 4vw, 32px)', overflow: 'hidden', marginBottom: 20 }}>
@@ -847,7 +866,7 @@ export default function AnalyticsPage() {
                             </div>
 
                             <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center' }}>
-                                Avg appointment value: ${summary.avgAppointmentValue} · Est. $0.04/message
+                                Avg appointment value: {currency.symbol}{summary.avgAppointmentValue} · Est. {currency.perMessageEst}/message
                             </div>
                         </div>
                     ) : (

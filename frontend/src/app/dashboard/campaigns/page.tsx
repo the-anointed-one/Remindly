@@ -4,13 +4,14 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
 import FeatureBanner from '@/components/FeatureBanner';
+import EmptyState from '@/components/EmptyState';
 import Icon from '@/components/ui/Icon';
 import { HelpTip } from '@/components/ui/Tooltip';
 import TooltipField from '@/components/ui/TooltipField';
 import {
-    faBullhorn, faTag, faUsers, faBolt, faChevronDown, faChevronRight,
-    faPlus, faTrash, faPen, faXmark, faCheck, faCircleInfo,
-    faPaperPlane, faCalendar, faReply, faFilter, faChartBar,
+    faPlus, faChartBar, faUsers, faTag, faPaperPlane, faHistory, faCheckCircle,
+    faClock, faBullhorn, faCircleInfo, faChevronRight, faSearch, faTrash, faBolt, faFileAlt, faRocket, faCalendar,
+    faXmark, faReply, faChevronDown, faPen, faCheck
 } from '@fortawesome/free-solid-svg-icons';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
 
@@ -1143,26 +1144,16 @@ export default function CampaignsPage() {
                 </div>
             )}
 
-            {/* Campaign list */}
             {loading ? (
                 <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
             ) : campaigns.length === 0 ? (
-                <div className="glass-card" style={{ padding: 'clamp(28px, 5vw, 48px)', textAlign: 'center' }}>
-                    <div style={{ fontSize: 44, marginBottom: 16, color: 'var(--text-muted)' }}><Icon icon={faBullhorn} /></div>
-                    <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>No campaigns yet</h2>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 14, lineHeight: 1.7, maxWidth: 400, margin: '0 auto 24px' }}>
-                        Campaigns organise your reminder workflows. Create your first campaign, add audience segments,
-                        and dispatch messages to hundreds of contacts automatically.
-                    </p>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap', fontSize: 13, color: 'var(--text-muted)' }}>
-                        {['Create Campaign', '→', 'Add Segments', '→', 'Link Tags', '→', 'Dispatch'].map((s, i) => (
-                            <span key={i} style={{ fontWeight: s === '→' ? 400 : 600, color: s === '→' ? 'var(--text-muted)' : 'var(--text-secondary)' }}>{s}</span>
-                        ))}
-                    </div>
-                    <button onClick={openCreate} className="btn btn-primary">
-                        <Icon icon={faPlus} /> Create First Campaign
-                    </button>
-                </div>
+                <EmptyState
+                    title="No campaigns created"
+                    description="Blast SMS or WhatsApp messages to your contact segments. Track open rates, replies, and conversions in real-time."
+                    icon={faBullhorn}
+                    ctaLabel="Create First Campaign"
+                    ctaAction={openCreate}
+                />
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {campaigns.map(campaign => (

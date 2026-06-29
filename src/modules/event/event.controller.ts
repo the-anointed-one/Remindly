@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { EventService } from './event.service';
+import { EventInviteService } from './event-invite.service';
 import {
   CreateEventDto,
   UpdateEventDto,
@@ -24,7 +25,10 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 @Controller('events')
 export class EventController {
-  constructor(private readonly eventService: EventService) {}
+  constructor(
+    private readonly eventService: EventService,
+    private readonly eventInviteService: EventInviteService,
+  ) {}
 
   @Post()
   create(
@@ -113,6 +117,23 @@ export class EventController {
     @Body() dto: InviteDto,
   ) {
     return this.eventService.invite(id, tenantId, dto.contactIds);
+  }
+
+  @Post(':id/invite-audience')
+  async inviteAudience(
+    @CurrentUser('tenantId') tenantId: string,
+    @Param('id', ParseUUIDPipe) eventId: string,
+    @Body() body: { type: 'all' | 'tag' | 'group'; ids?: string[] },
+  ) {
+    const result = await this.eventInviteService.inviteByAudience(
+      tenantId,
+      eventId,
+      body,
+    );
+    return {
+      success: true,
+      data: result,
+    };
   }
 
   @Post(':id/respond')

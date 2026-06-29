@@ -8,6 +8,7 @@ import Icon from '@/components/ui/Icon';
 import { OnboardingChecklist } from '@/components/OnboardingChecklist';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { useToast } from '@/components/Toast';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import {
     faCalendar, faCheck, faShieldHalved, faComment, faClock,
     faArrowTrendUp, faPlus, faUsers, faMessage, faPaperPlane, faCheckCircle,
@@ -112,7 +113,8 @@ function ActiveEventCard({ event }: { event: Event }) {
 export default function DashboardOverview() {
     const { user, usage } = useAuth();
     const toast = useToast();
-    const [attendance, setAttendance] = useState<AttendanceOverview | null>(null);
+    const [dashboardData, setDashboardData] = useState<any | null>(null);
+    const [initError, setInitError] = useState(false);
     const [events, setEvents] = useState<Event[]>([]);
     const [loading, setLoading] = useState(true);
     const { showOnboarding } = useOnboarding(!loading && !!user);
@@ -129,63 +131,143 @@ export default function DashboardOverview() {
     useEffect(() => {
         // Capture refs for closure — safe because we only run once on mount
         const toastRef = toast;
-        const showOnboardingRef = showOnboarding;
+        // const showOnboardingRef = showOnboarding; // No longer needed for logic, handled via settings
 
         async function loadDashboard() {
-            const attendancePromise = api.get('/analytics/attendance-overview');
-            const contactsPromise = api.get('/contacts').catch(() => ({ data: [] }));
-            const onboardingPromise = api.get('/analytics/onboarding-progress').catch(() => ({ data: null }));
-
-            let eventsData: any = [];
             try {
-                const eventsActiveRes = await api.get('/events/active');
-                eventsData = eventsActiveRes.data;
-            } catch (eventErr) {
-                console.warn('Fallback to /appointments for active events', eventErr);
-                try {
-                    const apptsRes = await api.get('/appointments');
-                    eventsData = apptsRes.data;
-                } catch (aptErr) {
-                    console.warn('Failed to load appointments fallback', aptErr);
-                    eventsData = [];
+                const dashboardPromise = api.get('/analytics/dashboard').catch(() => ({ data: null }));
+                
+                // ── NEW ONBOARDING LOGIC ──────────────────────────────────────────
+                
+                // 1. Read persisted state from Tenant.settings
+                const { data: settings } = await api.get('/tenants/settings').catch(() => ({ data: {} }));
+
+                // 2. If already fully completed, hide onboarding entirely
+                if (settings?.onboardingCompleted) {
+                    // Force hide if hook hasn't caught up yet, though hook handles this too.
+                    // Main purpose here is to stop further checks.
+                    setDashboardData((await dashboardPromise).data);
+                    
+                    // Fallback load active events just for the list
+                    try {
+                        const eventsActiveRes = await api.get('/events/active');
+                        setEvents(eventsActiveRes.data);
+                    } catch {
+                        setEvents([]);
+                    }
+                    
+                    setLoading(false);
+                    return;
                 }
-            }
 
-            const [aRes, cRes, oRes] = await Promise.all([attendancePromise, contactsPromise, onboardingPromise]);
+                // 3. Restore any previously completed steps
+                const savedProgress = {
+                    hasContacts:          settings?.onboarding_hasContacts ?? false,
+                    hasEvent:             settings?.onboarding_hasEvent ?? false,
+                    hasSentInvite:        settings?.onboarding_hasSentInvite ?? false,
+                    hasTrackedResponses:  settings?.onboarding_hasTrackedResponses ?? false,
+                };
+                setOnboardingProgress(savedProgress);
 
-            setAttendance(aRes.data);
-            setEvents(eventsData);
+                // 4. Re-check steps that are not yet marked complete
+                // (skip API calls for steps already confirmed true)
+                const [contactsRes, eventsRes, progressRes] = await Promise.all([
+                    !savedProgress.hasContacts
+                        ? api.get('/contacts?limit=1').catch(() => null)
+                        : null,
+                    !savedProgress.hasEvent
+                        ? api.get('/events?limit=1').catch(() => null)
+                        : null,
+                    (!savedProgress.hasSentInvite || !savedProgress.hasTrackedResponses)
+                        ? api.get('/analytics/onboarding-progress').catch(() => null)
+                        : null,
+                ]);
 
-            // Check onboarding progress
-            const contacts = cRes.data || [];
-            const hasContacts = contacts.length > 0;
-            const hasEvent = (eventsData?.length ?? 0) > 0;
-            const hasSentInvite = oRes.data?.hasSentInvite || false;
-            const hasTrackedResponses = oRes.data?.hasTrackedResponses || (aRes.data?.confirmed_attendees > 0);
+                // Also wait for dashboard data
+                const dRes = await dashboardPromise;
+                setDashboardData(dRes.data);
 
-            setOnboardingProgress({
-                hasContacts,
-                hasEvent,
-                hasSentInvite,
-                hasTrackedResponses,
-            });
+                // Load events list for display
+                let eventsData: any = [];
+                if (eventsRes?.data) {
+                    eventsData = eventsRes.data.data || eventsRes.data; // handle pagination wrap
+                } else if (savedProgress.hasEvent) {
+                    // If we didn't fetch because it's done, we still need list for UI
+                    try {
+                        const eventsActiveRes = await api.get('/events/active');
+                        eventsData = eventsActiveRes.data;
+                    } catch { eventsData = []; }
+                }
+                setEvents(Array.isArray(eventsData) ? eventsData : []);
 
-            // Trigger "Aha Moment" toast exactly once on first confirmation
-            if (hasTrackedResponses && showOnboardingRef && !ahaShownRef.current) {
-                ahaShownRef.current = true;
-                toastRef.success("Great! Your first attendee confirmed. Meetora will now help you manage the rest automatically.");
+                const freshProgress = {
+                    hasContacts: savedProgress.hasContacts ||
+                        (contactsRes?.data?.length > 0 ||
+                         contactsRes?.data?.data?.length > 0),
+                    hasEvent: savedProgress.hasEvent ||
+                        (eventsRes?.data?.length > 0 ||
+                         eventsRes?.data?.data?.length > 0),
+                    hasSentInvite: savedProgress.hasSentInvite ||
+                        (progressRes?.data?.hasSentInvite ?? false),
+                    hasTrackedResponses: savedProgress.hasTrackedResponses ||
+                        (progressRes?.data?.hasTrackedResponses ?? false) ||
+                        ((dRes.data?.confirmed_rsvps ?? 0) > 0),
+                };
+
+                setOnboardingProgress(freshProgress);
+
+                // 5. Persist any newly completed steps back to settings
+                const settingsPatch: Record<string, unknown> = {};
+                if (freshProgress.hasContacts && !savedProgress.hasContacts)
+                    settingsPatch['onboarding_hasContacts'] = true;
+                if (freshProgress.hasEvent && !savedProgress.hasEvent)
+                    settingsPatch['onboarding_hasEvent'] = true;
+                if (freshProgress.hasSentInvite && !savedProgress.hasSentInvite)
+                    settingsPatch['onboarding_hasSentInvite'] = true;
+                if (freshProgress.hasTrackedResponses && !savedProgress.hasTrackedResponses)
+                    settingsPatch['onboarding_hasTrackedResponses'] = true;
+
+                if (Object.keys(settingsPatch).length > 0) {
+                    await api.patch('/tenants/settings', { settings: settingsPatch }).catch(() => {});
+                }
+
+                // 6. Check if all steps are now complete
+                // Note: The audit says "Step 3 — Send broadcast" is the last visual step.
+                // "Track Responses" is handled as an "Aha moment" toast but might not be a blocking step for "completion".
+                // Based on Fix 2 Step B, completedSteps = [hasContacts, hasEvent, hasSentInvite].
+                // So we use those 3 for "allDone".
+                
+                const allDone =
+                    freshProgress.hasContacts &&
+                    freshProgress.hasEvent &&
+                    freshProgress.hasSentInvite;
+
+                if (allDone && !settings?.onboardingCompleted) {
+                    await api.patch('/tenants/settings', {
+                        settings: { onboardingCompleted: true }
+                    }).catch(() => {});
+                    // Toast success
+                    toastRef.success('Onboarding complete — welcome to Meetora!');
+                }
+
+                // Trigger "Aha Moment" toast exactly once on first confirmation
+                if (freshProgress.hasTrackedResponses && !ahaShownRef.current && !savedProgress.hasTrackedResponses) {
+                    ahaShownRef.current = true;
+                    toastRef.success("Great! Your first attendee confirmed. Meetora will now help you manage the rest automatically.");
+                }
+
+                setInitError(false);
+            } catch (err) {
+                console.error("Dashboard init error:", err);
+                setInitError(true);
+            } finally {
+                setLoading(false);
             }
         }
 
-        loadDashboard()
-            .catch(err => {
-                console.error("Dashboard init error:", err);
-            })
-            .finally(() => {
-                setLoading(false);
-            });
+        loadDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Run once on mount — toast and showOnboarding are captured via closure + ref guard
+    }, []); // Run once on mount
 
     const getGreeting = () => {
         const h = new Date().getHours();
@@ -215,6 +297,13 @@ export default function DashboardOverview() {
                 </h1>
                 <p style={{ color: 'var(--text-secondary)', fontSize: 16 }}>Your attendance automation is running smoothly.</p>
             </div>
+
+            {initError && (
+                <div style={{ padding: 16, background: 'var(--error-light)', color: 'var(--error)', border: '1px solid var(--border)', borderRadius: 12, marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Icon icon={faShieldHalved} />
+                    <span style={{ fontWeight: 600 }}>Dashboard data temporarily unavailable.</span>
+                </div>
+            )}
 
             {/* 1. Primary Action Section */}
             <div className="card" style={{ 
@@ -251,7 +340,9 @@ export default function DashboardOverview() {
             </div>
 
             {/* 2. Visual Workflow Guide */}
-            <WorkflowGuide />
+            <ErrorBoundary key="workflow">
+                <WorkflowGuide />
+            </ErrorBoundary>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: 32 }}>
                 
@@ -265,28 +356,30 @@ export default function DashboardOverview() {
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
-                        {loading ? (
-                            [1, 2].map(i => <div key={i} className="card" style={{ height: 180, background: 'var(--bg-card)', borderRadius: 20, animation: 'pulse 1.5s infinite' }} />)
-                        ) : events.length === 0 ? (
-                            <div className="card" style={{ gridColumn: '1 / -1', padding: '60px 48px', textAlign: 'center', background: 'var(--bg-secondary)', border: '2px dashed var(--border)', borderRadius: 24 }}>
-                                <div style={{ 
-                                    width: 80, height: 80, borderRadius: '50%', background: 'var(--bg-card)', 
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
-                                }}>
-                                    <Icon icon={faCalendar} style={{ fontSize: 32, color: 'var(--primary)' }} />
+                        <ErrorBoundary key="events-list">
+                            {loading ? (
+                                [1, 2].map(i => <div key={i} className="card" style={{ height: 180, background: 'var(--bg-card)', borderRadius: 20, animation: 'pulse 1.5s infinite' }} />)
+                            ) : events.length === 0 ? (
+                                <div className="card" style={{ gridColumn: '1 / -1', padding: '60px 48px', textAlign: 'center', background: 'var(--bg-secondary)', border: '2px dashed var(--border)', borderRadius: 24 }}>
+                                    <div style={{ 
+                                        width: 80, height: 80, borderRadius: '50%', background: 'var(--bg-card)', 
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+                                    }}>
+                                        <Icon icon={faCalendar} style={{ fontSize: 32, color: 'var(--primary)' }} />
+                                    </div>
+                                    <h4 style={{ fontSize: 20, fontWeight: 800, marginBottom: 12 }}>You haven’t created any events yet.</h4>
+                                    <p style={{ color: 'var(--text-secondary)', marginBottom: 32, maxWidth: 400, margin: '0 auto 32px', lineHeight: 1.6 }}>
+                                        Start by creating your first event to invite people and track confirmations automatically.
+                                    </p>
+                                    <Link href="/dashboard/events" className="btn btn-primary" style={{ padding: '12px 24px', fontWeight: 800, borderRadius: 12 }}>
+                                        Create First Event
+                                    </Link>
                                 </div>
-                                <h4 style={{ fontSize: 20, fontWeight: 800, marginBottom: 12 }}>You haven’t created any events yet.</h4>
-                                <p style={{ color: 'var(--text-secondary)', marginBottom: 32, maxWidth: 400, margin: '0 auto 32px', lineHeight: 1.6 }}>
-                                    Start by creating your first event to invite people and track confirmations automatically.
-                                </p>
-                                <Link href="/dashboard/events" className="btn btn-primary" style={{ padding: '12px 24px', fontWeight: 800, borderRadius: 12 }}>
-                                    Create First Event
-                                </Link>
-                            </div>
-                        ) : (
-                            events.map(event => <ActiveEventCard key={event.id} event={event} />)
-                        )}
+                            ) : (
+                                events.map(event => <ActiveEventCard key={event.id} event={event} />)
+                            )}
+                        </ErrorBoundary>
                     </div>
                 </div>
 
@@ -296,69 +389,73 @@ export default function DashboardOverview() {
                         <Icon icon={faChartLine} className="text-accent" style={{ fontSize: 16 }} /> Attendance Overview
                     </h3>
                     
-                    <div className="card" style={{ padding: 24, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20 }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                            {[
-                                { label: 'Events This Week', value: attendance?.events_this_week ?? 0, icon: faCalendar, color: 'var(--primary)' },
-                                { label: 'Invitations Sent', value: attendance?.messages_sent ?? 0, icon: faPaperPlane, color: 'var(--accent-cta)' },
-                                { label: 'Confirmed Participants', value: attendance?.confirmed_attendees ?? 0, icon: faCheckCircle, color: 'var(--success)' },
-                                { label: 'Pending Responses', value: attendance?.pending_responses ?? 0, icon: faClock, color: 'var(--warning)' },
-                            ].map(m => (
-                                <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                                    <div style={{ width: 40, height: 40, borderRadius: 10, background: `${m.color}15`, color: m.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <Icon icon={m.icon} />
+                    <ErrorBoundary key="attendance-intelligence">
+                        <div className="card" style={{ padding: 24, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                {[
+                                    { label: 'Events', value: dashboardData?.total_events ?? 0, icon: faCalendar, color: 'var(--primary)' },
+                                    { label: 'Total Contacts', value: dashboardData?.total_contacts ?? 0, icon: faUsers, color: 'var(--accent-cta)' },
+                                    { label: 'Confirmed RSVPs', value: dashboardData?.confirmed_rsvps ?? 0, icon: faCheckCircle, color: 'var(--success)' },
+                                    { label: 'Messages Sent', value: dashboardData?.messages_sent ?? 0, icon: faPaperPlane, color: 'var(--warning)' },
+                                ].map(m => (
+                                    <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                        <div style={{ width: 40, height: 40, borderRadius: 10, background: `${m.color}15`, color: m.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Icon icon={m.icon} />
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{m.label}</div>
+                                            <div style={{ fontSize: 22, fontWeight: 900 }}>{m.value}</div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{m.label}</div>
-                                        <div style={{ fontSize: 22, fontWeight: 900 }}>{m.value}</div>
-                                    </div>
+                                ))}
+                            </div>
+                            
+                            <div style={{ marginTop: 24, padding: 16, background: 'var(--bg-secondary)', borderRadius: 12, border: '1px solid var(--border)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8 }}>
+                                    <span style={{ fontWeight: 700 }}>Confirmation Rate</span>
+                                    <span style={{ fontWeight: 900, color: 'var(--success)' }}>
+                                        {((dashboardData?.confirmed_rsvps ?? 0) + (dashboardData?.total_events ?? 0)) > 0 
+                                            ? Math.round(((dashboardData?.confirmed_rsvps ?? 0) / ((dashboardData?.confirmed_rsvps ?? 0) + (dashboardData?.total_events ?? 0))) * 100) 
+                                            : 0}%
+                                    </span>
                                 </div>
-                            ))}
-                        </div>
-                        
-                        <div style={{ marginTop: 24, padding: 16, background: 'var(--bg-secondary)', borderRadius: 12, border: '1px solid var(--border)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8 }}>
-                                <span style={{ fontWeight: 700 }}>Confirmation Rate</span>
-                                <span style={{ fontWeight: 900, color: 'var(--success)' }}>
-                                    {attendance && (attendance.confirmed_attendees + attendance.pending_responses) > 0 
-                                        ? Math.round((attendance.confirmed_attendees / (attendance.confirmed_attendees + attendance.pending_responses)) * 100) 
-                                        : 0}%
-                                </span>
-                            </div>
-                            <div className="progress-bar" style={{ height: 6 }}>
-                                <div className="progress-fill" style={{ 
-                                    width: `${attendance && (attendance.confirmed_attendees + attendance.pending_responses) > 0 
-                                        ? Math.round((attendance.confirmed_attendees / (attendance.confirmed_attendees + attendance.pending_responses)) * 100) 
-                                        : 0}%`, 
-                                    background: 'var(--success)' 
-                                }} />
+                                <div className="progress-bar" style={{ height: 6 }}>
+                                    <div className="progress-fill" style={{ 
+                                        width: `${((dashboardData?.confirmed_rsvps ?? 0) + (dashboardData?.total_events ?? 0)) > 0 
+                                            ? Math.round(((dashboardData?.confirmed_rsvps ?? 0) / ((dashboardData?.confirmed_rsvps ?? 0) + (dashboardData?.total_events ?? 0))) * 100) 
+                                            : 0}%`, 
+                                        background: 'var(--success)' 
+                                    }} />
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    </ErrorBoundary>
 
                     {/* Fuel Card */}
-                    <div className="card" style={{ padding: 20, borderRadius: 20 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                            <Icon icon={faBolt} style={{ color: 'var(--warning)' }} />
-                            <span style={{ fontSize: 13, fontWeight: 800, textTransform: 'uppercase' }}>Account Fuel</span>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                                    <span style={{ fontWeight: 700 }}>SMS Credits</span>
-                                    <span style={{ color: 'var(--text-muted)' }}>{smsUsed}/{smsLimit}</span>
-                                </div>
-                                <div className="progress-bar" style={{ height: 4 }}><div className="progress-fill" style={{ width: `${smsLimit > 0 ? (smsUsed/smsLimit)*100 : 0}%` }} /></div>
+                    <ErrorBoundary key="account-fuel">
+                        <div className="card" style={{ padding: 20, borderRadius: 20 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                                <Icon icon={faBolt} style={{ color: 'var(--warning)' }} />
+                                <span style={{ fontSize: 13, fontWeight: 800, textTransform: 'uppercase' }}>Account Fuel</span>
                             </div>
-                            <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                                    <span style={{ fontWeight: 700 }}>AI Tokens</span>
-                                    <span style={{ color: 'var(--text-muted)' }}>{aiUsed}/{aiLimit}</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                                        <span style={{ fontWeight: 700 }}>SMS Credits</span>
+                                        <span style={{ color: 'var(--text-muted)' }}>{smsUsed}/{smsLimit}</span>
+                                    </div>
+                                    <div className="progress-bar" style={{ height: 4 }}><div className="progress-fill" style={{ width: `${smsLimit > 0 ? (smsUsed/smsLimit)*100 : 0}%` }} /></div>
                                 </div>
-                                <div className="progress-bar" style={{ height: 4 }}><div className="progress-fill" style={{ width: `${aiLimit > 0 ? (aiUsed/aiLimit)*100 : 0}%`, background: '#f97316' }} /></div>
+                                <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                                        <span style={{ fontWeight: 700 }}>AI Tokens</span>
+                                        <span style={{ color: 'var(--text-muted)' }}>{aiUsed}/{aiLimit}</span>
+                                    </div>
+                                    <div className="progress-bar" style={{ height: 4 }}><div className="progress-fill" style={{ width: `${aiLimit > 0 ? (aiUsed/aiLimit)*100 : 0}%`, background: '#f97316' }} /></div>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    </ErrorBoundary>
                 </div>
             </div>
             

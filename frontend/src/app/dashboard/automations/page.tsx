@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 import Icon from '@/components/ui/Icon';
+import EmptyState from '@/components/EmptyState';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCalendar, faCheck, faTimes, faFlagCheckered, faStar, faMoon, faBolt, faComment, faMobileAlt, faPhone, faEnvelope, faRobot, faTag, faPlay, faChartBar } from '@fortawesome/free-solid-svg-icons';
+import { faCalendar, faCheck, faTimes, faFlagCheckered, faStar, faMoon, faBolt, faComment, faMobileAlt, faPhone, faEnvelope, faRobot, faTag, faPlay, faChartBar, faMousePointer } from '@fortawesome/free-solid-svg-icons';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
 
 // ── Types ────────────────────────────────────
@@ -576,6 +577,7 @@ function WorkflowBuilder({
                 <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
+                    title="The internal name for this automation workflow."
                     style={{
                         flex: 1, padding: '8px 14px', borderRadius: 10, fontSize: 18,
                         fontWeight: 700, background: 'transparent', border: '1.5px solid transparent',
@@ -791,9 +793,13 @@ function WorkflowBuilder({
                     )}
 
                     {selectedIdx === null && (
-                        <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', paddingTop: 40 }}>
-                            Select a trigger or step to configure it
-                        </p>
+                        <div style={{ paddingTop: 40 }}>
+                            <EmptyState
+                                title="Select a step"
+                                description="Click any step in the workflow to configure its settings."
+                                icon={faMousePointer}
+                            />
+                        </div>
                     )}
                 </div>
             </div>
@@ -1137,28 +1143,13 @@ export default function AutomationsPage() {
                     Loading workflows…
                 </div>
             ) : workflows.length === 0 ? (
-                /* Empty state */
-                <div style={{
-                    textAlign: 'center', padding: '60px 20px',
-                    background: 'rgba(255,255,255,0.02)',
-                    border: '1.5px dashed rgba(99,102,241,0.2)',
-                    borderRadius: 16,
-                }}>
-                    <div style={{ fontSize: 36, marginBottom: 16, color: '#a5b4fc' }}><Icon icon={faBolt} /></div>
-                    <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-                        No workflows yet
-                    </h3>
-                    <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 24, maxWidth: 380, margin: '0 auto 24px' }}>
-                        Create your first automation workflow to send reminders, follow-ups, and review requests automatically.
-                    </p>
-                    <button
-                        type="button"
-                        className="btn btn-primary"
-                        onClick={() => { setEditingWorkflow(null); setView('builder'); }}
-                    >
-                        Create First Workflow
-                    </button>
-                </div>
+                <EmptyState
+                    title="No workflows yet"
+                    description="Create your first automation workflow to send reminders, follow-ups, and review requests automatically."
+                    icon={faBolt}
+                    ctaLabel="Create First Workflow"
+                    ctaAction={() => { setEditingWorkflow(null); setView('builder'); }}
+                />
             ) : (
                 /* Workflow grid */
                 <div className="grid-2" style={{ gap: 16 }}>

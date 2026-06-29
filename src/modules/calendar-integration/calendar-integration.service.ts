@@ -10,7 +10,6 @@ import { CalendarProvider, CalendarSyncStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReminderSchedulerService } from '../reminder/reminder-scheduler.service';
 import { WorkflowEngineService } from '../automation/workflow-engine.service';
-import { PredictionService } from '../prediction/prediction.service';
 import { GoogleCalendarProvider } from './providers/google-calendar.provider';
 import { OutlookCalendarProvider } from './providers/outlook-calendar.provider';
 import {
@@ -30,7 +29,6 @@ export class CalendarIntegrationService {
     private readonly outlookProvider: OutlookCalendarProvider,
     private readonly reminderScheduler: ReminderSchedulerService,
     private readonly workflowEngine: WorkflowEngineService,
-    private readonly predictionService: PredictionService,
   ) {
     this.syncQueue = new Queue(CALENDAR_SYNC_QUEUE, {
       connection: getRedisConnection(),
@@ -384,7 +382,7 @@ export class CalendarIntegrationService {
             );
           });
 
-        // Fire new Event automation trigger + prediction
+        // Fire new Event automation trigger
         this.workflowEngine
           .fireTrigger(tenantId, 'event_created', event.id, {
             eventId: event.id,
@@ -392,9 +390,6 @@ export class CalendarIntegrationService {
             customerId: customerId ?? undefined,
             tenantId,
           })
-          .catch(() => {});
-        this.predictionService
-          .generatePrediction(appointmentId, tenantId)
           .catch(() => {});
       }
     }

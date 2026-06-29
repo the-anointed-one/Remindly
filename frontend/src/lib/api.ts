@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+if (!process.env.NEXT_PUBLIC_API_URL && process.env.NODE_ENV === 'production') {
+    throw new Error('NEXT_PUBLIC_API_URL is required in production builds.');
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV !== 'production' ? 'http://localhost:3001/api' : '');
 
 const api = axios.create({
     baseURL: API_BASE,
@@ -58,10 +62,8 @@ api.interceptors.response.use(
     async (error) => {
         const original = error.config;
 
-        if (original?.url?.includes('/auth/refresh')) {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            if (typeof window !== 'undefined') window.location.href = '/login';
+        if (original?.url?.includes('/auth/')) {
+            // Don't try to refresh if the error happened on an auth endpoint
             return Promise.reject(error);
         }
 
@@ -107,4 +109,9 @@ api.interceptors.response.use(
     }
 );
 
+export const updateAppointment = (id: string, payload: Record<string, unknown>) => api.put(`/appointments/${id}`, payload);
+export const deleteAppointment = (id: string) => api.delete(`/appointments/${id}`);
+export const deleteEvent = (id: string) => api.delete(`/events/${id}`);
+
 export default api;
+

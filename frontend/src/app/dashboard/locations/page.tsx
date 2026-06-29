@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '@/lib/api';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faLocationDot, faMapPin, faPhone, faClock, faCalendar } from '@fortawesome/free-solid-svg-icons';
+import Icon from '@/components/ui/Icon';
+import EmptyState from '@/components/EmptyState';
+import { faLocationDot, faMapPin, faPhone, faClock, faCalendar, faMapLocationDot } from '@fortawesome/free-solid-svg-icons';
 
 interface Location {
     id: string;
@@ -144,6 +146,7 @@ export default function LocationsPage() {
                                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                                     placeholder="Main Branch"
                                     required
+                                    title="Internal name for this business location."
                                 />
                             </div>
                             <div className="input-group">
@@ -153,6 +156,7 @@ export default function LocationsPage() {
                                     value={form.phone}
                                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
                                     placeholder="+1 555 000 0000"
+                                    title="Contact phone number for this location."
                                 />
                             </div>
                         </div>
@@ -163,6 +167,7 @@ export default function LocationsPage() {
                                 value={form.address}
                                 onChange={(e) => setForm({ ...form, address: e.target.value })}
                                 placeholder="123 Main St, City, State"
+                                title="Full street address of the venue."
                             />
                         </div>
                         <div className="grid-2">
@@ -224,18 +229,16 @@ export default function LocationsPage() {
                 </div>
             )}
 
-            {/* List */}
             {loading ? (
                 <p style={{ color: 'var(--text-muted)' }}>Loading...</p>
             ) : locations.length === 0 ? (
-                <div className="card" style={{ textAlign: 'center', padding: 'clamp(20px, 4vw, 48px)' }}>
-                    <div style={{ fontSize: 36, marginBottom: 16, color: 'var(--accent-primary)' }}><FontAwesomeIcon icon={faLocationDot} /></div>
-                    <h3 style={{ fontSize: 18, marginBottom: 8 }}>No Locations Yet</h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24 }}>
-                        Add your first location to assign it to appointments.
-                    </p>
-                    <button className="btn btn-primary" onClick={openCreate}>+ Add Location</button>
-                </div>
+                <EmptyState
+                    title="No locations yet"
+                    description="Add your physical or virtual business locations. This helps customers know where to find you and allows for location-based reminders."
+                    icon={faMapLocationDot}
+                    ctaLabel="Add Location"
+                    ctaAction={openCreate}
+                />
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {locations.map((loc) => (

@@ -18,7 +18,11 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import FeatureBanner from '@/components/FeatureBanner';
 import Icon from '@/components/ui/Icon';
-import { faFolderOpen, faUsers } from '@fortawesome/free-solid-svg-icons';
+import EmptyState from '@/components/EmptyState';
+import {
+    faUsers, faUserPlus, faFileImport, faSearch, faFilter, faHistory,
+    faChevronRight, faChevronLeft, faEllipsisV, faPhone, faEnvelope, faMapMarkerAlt, faClock, faTag, faPlus, faFolderOpen
+} from '@fortawesome/free-solid-svg-icons';
 import { HelpTip } from '@/components/ui/Tooltip';
 import TooltipField from '@/components/ui/TooltipField';
 
@@ -41,6 +45,14 @@ interface ContactStats {
     unsubscribed: number;
     withPhone: number;
     withEmail: number;
+}
+
+interface TagItem {
+    id: string;
+    name: string;
+    tenantId?: string;
+    createdAt?: string;
+    _count?: { contactTags?: number };
 }
 
 interface PageResult {
@@ -143,6 +155,7 @@ function AddContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
                     <div>
                         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>Notes</label>
                         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any notes..."
+                            title="Additional details about this contact."
                             style={{ width: '100%', padding: '9px 12px', borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 16, resize: 'vertical' }} />
                     </div>
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
@@ -244,12 +257,112 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
     );
 }
 
+// ── Groups Tab ────────────────────────────────────────────────────────────
+
+function GroupsTab() {
+    const [groups, setGroups] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        api.get('/contacts/groups').then(res => setGroups(res.data.data || res.data || [])).finally(() => setLoading(false));
+    }, []);
+
+    if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading groups...</div>;
+    return (
+        <div className="glass-card" style={{ padding: '16px', overflowX: 'auto' }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Groups</h3>
+            <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: 14 }}>
+                <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                        <th style={{ padding: '8px 12px' }}>Name</th>
+                        <th style={{ padding: '8px 12px' }}>Members</th>
+                        <th style={{ padding: '8px 12px' }}>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {groups.map(g => (
+                        <tr key={g.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '12px', fontWeight: 600 }}>{g.name}</td>
+                            <td style={{ padding: '12px' }}>{g._count?.members || 0}</td>
+                            <td style={{ padding: '12px', color: 'var(--text-muted)' }}>{new Date(g.createdAt).toLocaleDateString()}</td>
+                        </tr>
+                    ))}
+                    {groups.length === 0 && <tr><td colSpan={3} style={{ padding: 20, textAlign: 'center' }}>No groups found</td></tr>}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+// ── Tags Tab ──────────────────────────────────────────────────────────────
+
+function TagsTab() {
+    const [tags, setTags] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        api.get('/contacts/tags').then(res => setTags(res.data.data || res.data || [])).finally(() => setLoading(false));
+    }, []);
+
+    if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading tags...</div>;
+    return (
+        <div className="glass-card" style={{ padding: '16px', overflowX: 'auto' }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Tags</h3>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {tags.map(t => (
+                    <div key={t.id} style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(0,169,157,0.1)', border: '1px solid rgba(0,169,157,0.3)', color: 'var(--primary)', fontWeight: 600 }}>
+                        {t.name} <span style={{ opacity: 0.6, fontSize: 12, marginLeft: 6 }}>{t._count?.contactTags || 0} contacts</span>
+                    </div>
+                ))}
+            </div>
+            {tags.length === 0 && <div style={{ padding: 20, textAlign: 'center' }}>No tags found</div>}
+        </div>
+    );
+}
+
+// ── Activity Side Panel ───────────────────────────────────────────────────
+
+function ActivitySidePanel({ contactId, onClose }: { contactId: string, onClose: () => void }) {
+    const [activities, setActivities] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        api.get(`/contacts/${contactId}/activity`).then(res => setActivities(res.data.data || res.data || [])).finally(() => setLoading(false));
+    }, [contactId]);
+
+    return (
+        <div style={{
+            position: 'fixed', top: 0, right: 0, bottom: 0, width: 400, maxWidth: '90vw',
+            background: 'var(--bg-card)', borderLeft: '1px solid var(--border)', zIndex: 2000,
+            boxShadow: '-8px 0 24px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column'
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: 20, borderBottom: '1px solid var(--border)' }}>
+                <h3 style={{ fontSize: 18, fontWeight: 700 }}>Activity Timeline</h3>
+                <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 20, cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+                {loading ? <div style={{ textAlign: 'center' }}>Loading...</div> : activities.length === 0 ? <div style={{ textAlign: 'center' }}>No recent activity</div> : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {activities.map((act) => (
+                            <div key={act.id} style={{ padding: 12, borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>{new Date(act.createdAt).toLocaleString()}</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{act.type}</div>
+                                {act.details && <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>{JSON.stringify(act.details)}</div>}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // ── Main Page ─────────────────────────────────
 
 export default function ContactsPage() {
     const [result, setResult] = useState<PageResult | null>(null);
     const [stats, setStats] = useState<ContactStats | null>(null);
-    const [allTags, setAllTags] = useState<string[]>([]);
+    const [allTags, setAllTags] = useState<TagItem[]>([]);
     const [loading, setLoading] = useState(true);
     const isMobile = useIsMobile();
     const [search, setSearch] = useState('');
@@ -261,6 +374,8 @@ export default function ContactsPage() {
     const [bulkTagInput, setBulkTagInput] = useState('');
     const [bulkTagging, setBulkTagging] = useState(false);
     const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [activeTab, setActiveTab] = useState<'contacts' | 'groups' | 'tags'>('contacts');
+    const [sidebarContactId, setSidebarContactId] = useState<string | null>(null);
     const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
     const load = useCallback(async (s = search, t = tagFilter, p = page) => {
@@ -276,7 +391,9 @@ export default function ContactsPage() {
             ]);
             setResult(listRes.data);
             setStats(statsRes.data);
-            setAllTags(tagsRes.data);
+            // tags API returns objects — normalise here so the rest of the page stays simple
+            const rawTags = tagsRes.data?.data || tagsRes.data || [];
+            setAllTags(Array.isArray(rawTags) ? rawTags.map((t: any) => typeof t === 'string' ? { id: t, name: t } : t) : []);
         } catch { /* ignore */ }
         setLoading(false);
     }, [search, tagFilter, page]);
@@ -376,23 +493,51 @@ export default function ContactsPage() {
                 accent="var(--success)"
             />
 
-            {/* Stat cards */}
-            {stats && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
-                    {[
-                        { label: 'Total', value: stats.total, color: 'var(--primary)' },
-                        { label: 'Active', value: stats.active, color: 'var(--success)' },
-                        { label: 'With Phone', value: '#06b6d4', color: '#06b6d4' }, // Sky
-                        { label: 'With Email', value: '#8b5cf6', color: '#8b5cf6' }, // Purple
-                        { label: 'Unsubscribed', value: stats.unsubscribed, color: 'var(--error)' },
-                    ].map((s) => (
-                        <div key={s.label} className="card" style={{ padding: '16px 18px' }}>
-                            <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value.toLocaleString()}</div>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{s.label}</div>
-                        </div>
-                    ))}
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: 24, borderBottom: '1px solid var(--border)', marginBottom: 24, marginTop: 16 }}>
+                {[
+                    { id: 'contacts', label: 'All Contacts' },
+                    { id: 'groups', label: 'Groups' },
+                    { id: 'tags', label: 'Tags' },
+                ].map(t => (
+                    <button 
+                        key={t.id} 
+                        onClick={() => setActiveTab(t.id as any)}
+                        style={{
+                            padding: '10px 4px', background: 'none', border: 'none',
+                            borderBottom: activeTab === t.id ? '2px solid var(--primary)' : '2px solid transparent',
+                            color: activeTab === t.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                            fontWeight: activeTab === t.id ? 700 : 600,
+                            cursor: 'pointer', fontSize: 14, marginBottom: -1
+                        }}
+                    >
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+
+            {activeTab === 'groups' && <GroupsTab />}
+            {activeTab === 'tags' && <TagsTab />}
+
+            {activeTab === 'contacts' && (
+                <>
+                    {/* Stat cards */}
+    {stats && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
+            {[
+                { label: 'Total', value: stats.total, color: 'var(--primary)' },
+                { label: 'Active', value: stats.active, color: 'var(--success)' },
+                { label: 'With Phone', value: stats.withPhone, color: '#06b6d4' },
+                { label: 'With Email', value: stats.withEmail, color: '#8b5cf6' },
+                { label: 'Unsubscribed', value: stats.unsubscribed, color: 'var(--error)' },
+            ].map((s) => (
+                <div key={s.label} className="card" style={{ padding: '16px 18px' }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{(s.value ?? 0).toLocaleString()}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{s.label}</div>
                 </div>
-            )}
+            ))}
+        </div>
+    )}
 
             {/* Filters row */}
             <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -400,6 +545,7 @@ export default function ContactsPage() {
                     value={search}
                     onChange={(e) => handleSearch(e.target.value)}
                     placeholder="Search by name, email, or phone…"
+                    title="Filter your contact list by name, phone, or email."
                     style={{
                         flex: 1, minWidth: 200, padding: '9px 14px', borderRadius: 8,
                         background: 'var(--bg-secondary)', border: '1px solid var(--border)',
@@ -410,16 +556,16 @@ export default function ContactsPage() {
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {allTags.slice(0, 8).map((tag) => (
                             <button
-                                key={tag}
-                                onClick={() => handleTagFilter(tag)}
+                                key={tag.id}
+                                onClick={() => handleTagFilter(tag.name)}
                                 style={{
                                     padding: '5px 12px', borderRadius: 100, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                                    background: tagFilter === tag ? 'rgba(0, 169, 157, 0.2)' : 'rgba(0, 169, 157, 0.06)',
-                                    border: `1px solid ${tagFilter === tag ? 'rgba(0, 169, 157, 0.5)' : 'rgba(0, 169, 157, 0.2)'}`,
+                                    background: tagFilter === tag.name ? 'rgba(0, 169, 157, 0.2)' : 'rgba(0, 169, 157, 0.06)',
+                                    border: `1px solid ${tagFilter === tag.name ? 'rgba(0, 169, 157, 0.5)' : 'rgba(0, 169, 157, 0.2)'}`,
                                     color: 'var(--primary)',
                                 }}
                             >
-                                {tag}
+                                {tag.name}
                             </button>
                         ))}
                         {tagFilter && (
@@ -502,19 +648,15 @@ export default function ContactsPage() {
                 {loading ? (
                     <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
                 ) : contacts.length === 0 ? (
-                    <div style={{ padding: '48px', textAlign: 'center' }}>
-                        <div style={{ fontSize: 40, marginBottom: 12, color: 'var(--text-muted)' }}><Icon icon={faUsers} /></div>
-                        <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>No contacts yet</h3>
-                        <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 20 }}>
-                            {search || tagFilter ? 'No contacts match your filters.' : 'Add your first contact or import from CSV/Excel.'}
-                        </p>
-                        {!search && !tagFilter && (
-                            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                                <button onClick={() => setShowAdd(true)} className="btn btn-primary">Add Contact</button>
-                                <button onClick={() => setShowImport(true)} className="btn btn-outline">Import File</button>
-                            </div>
-                        )}
-                    </div>
+                    <EmptyState
+                        title="No contacts yet"
+                        description={search || tagFilter ? 'No contacts match your filters.' : 'Add your first contact or import from CSV/Excel.'}
+                        icon={faUsers}
+                        ctaLabel={!search && !tagFilter ? 'Add Contact' : undefined}
+                        ctaAction={() => setShowAdd(true)}
+                        ctaLabel2={!search && !tagFilter ? 'Import File' : undefined}
+                        ctaAction2={() => setShowImport(true)}
+                    />
                 ) : (
                     <>
                         {!isMobile ? (
@@ -559,13 +701,10 @@ export default function ContactsPage() {
                                             ? new Date(contact.lastAppointment).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
                                             : '—'}
                                     </div>
-                                    <div>
-                                        <Link
-                                            href={`/dashboard/contacts/${contact.id}`}
-                                            style={{ fontSize: 13, color: 'var(--text-accent)', fontWeight: 600, whiteSpace: 'nowrap' }}
-                                        >
-                                            View →
-                                        </Link>
+                                    <div style={{ cursor: 'pointer' }} onClick={() => setSidebarContactId(contact.id)}>
+                                        <span style={{ fontSize: 13, color: 'var(--text-accent)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                            View Activity →
+                                        </span>
                                     </div>
                                 </div>
                             ))
@@ -599,12 +738,12 @@ export default function ContactsPage() {
                                                     ? new Date(contact.lastAppointment).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
                                                     : '—'}
                                             </div>
-                                            <Link
-                                                href={`/dashboard/contacts/${contact.id}`}
+                                            <button
+                                                onClick={() => setSidebarContactId(contact.id)}
                                                 className="btn btn-outline" style={{ fontSize: 12, padding: '4px 10px' }}
                                             >
-                                                View →
-                                            </Link>
+                                                View Activity →
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
@@ -636,6 +775,9 @@ export default function ContactsPage() {
 
             {showAdd && <AddContactModal onClose={() => setShowAdd(false)} onCreated={() => load()} />}
             {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => load()} />}
+            {sidebarContactId && <ActivitySidePanel contactId={sidebarContactId} onClose={() => setSidebarContactId(null)} />}
+                </>
+            )}
         </div>
     );
 }

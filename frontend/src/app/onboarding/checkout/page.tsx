@@ -6,21 +6,19 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { useCurrency } from '@/hooks/useCurrency';
 
-const PLAN_DETAILS: Record<string, { name: string; price: string; features: string[] }> = {
+const PLAN_DETAILS: Record<string, { name: string; features: string[] }> = {
     SMS: {
         name: 'Starter',
-        price: '₦5,000/month',
         features: ['100 SMS reminders/month', 'Appointment management', 'Custom templates'],
     },
     SMS_VOICE: {
         name: 'Growth',
-        price: '₦10,000/month',
         features: ['500 SMS reminders/month', 'Voice call reminders', 'WhatsApp messaging'],
     },
     SMS_VOICE_AI: {
         name: 'Pro',
-        price: '₦18,000/month',
         features: ['Unlimited SMS reminders', 'Voice + WhatsApp', 'AI template generation'],
     },
 };
@@ -31,6 +29,7 @@ declare global {
 
 export default function CheckoutPage() {
     const router = useRouter();
+    const currency = useCurrency();
     const [plan, setPlan] = useState('SMS_VOICE');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -48,6 +47,7 @@ export default function CheckoutPage() {
     }, []);
 
     const planDetails = PLAN_DETAILS[plan];
+    const planPrice = currency.plans[plan as keyof typeof currency.plans].monthlyPrice;
 
     const handleStartTrial = async () => {
         setError('');
@@ -107,7 +107,7 @@ export default function CheckoutPage() {
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                             <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>After 14-day trial</span>
-                            <span style={{ fontWeight: 700, fontSize: 16 }}>{planDetails.price}</span>
+                            <span style={{ fontWeight: 700, fontSize: 16 }}>{planPrice}</span>
                         </div>
                         <div style={{ background: '#0d0d0f', borderRadius: 8, padding: '14px 16px' }}>
                             {planDetails.features.map((f, i) => (
@@ -126,7 +126,7 @@ export default function CheckoutPage() {
                             {[
                                 { step: '1', text: 'Card authorized today — no charge' },
                                 { step: '2', text: '14 days of full access begins immediately' },
-                                { step: '3', text: `First charge of ${planDetails.price} on day 15` },
+                                { step: '3', text: `First charge of ${planPrice} on day 15` },
                                 { step: '4', text: 'Cancel anytime from your billing dashboard' },
                             ].map(item => (
                                 <div key={item.step} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>

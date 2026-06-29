@@ -58,9 +58,6 @@ model Tenant {
   locations                Location[]
   messageLogs              MessageLog[]
   messageResponses         MessageResponse[]
-  predictionLogs           PredictionLog[]
-  reactivationCampaigns    ReactivationCampaign[]
-  reactivationContacts     ReactivationContact[]
   reminderRules            ReminderRule[]
   reminders                Reminder[]
   rsvpEvents               RsvpEvent[]
@@ -87,11 +84,8 @@ model User {
   updatedAt              DateTime   @updatedAt @map("updated_at")
   passwordResetExpiresAt DateTime?  @map("password_reset_expires_at")
   passwordResetTokenHash String?    @map("password_reset_token_hash")
-  referralCode           String?    @unique @map("referral_code")
   auditLogs              AuditLog[]
   createdEvents          Event[]
-  referralReceived       Referral?  @relation("ReferredReferral")
-  referralsGiven         Referral[] @relation("ReferrerReferrals")
   tenant                 Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, email])
@@ -148,7 +142,6 @@ model Appointment {
   createdAt            DateTime                 @default(now()) @map("created_at")
   updatedAt            DateTime                 @updatedAt @map("updated_at")
   locationId           String?                  @map("location_id") @db.Uuid
-  noShowRiskScore      Float?                   @map("no_show_risk_score")
   riskCalculatedAt     DateTime?                @map("risk_calculated_at")
   isDemoData           Boolean                  @default(false) @map("is_demo_data")
   campaignId           String?                  @map("campaign_id") @db.Uuid
@@ -164,7 +157,6 @@ model Appointment {
   tenant               Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   calendarSyncedEvents CalendarSyncedEvent[]
   feedbackRequests     FeedbackRequest[]
-  predictionLogs       PredictionLog[]
   reminders            Reminder[]
   rescheduleSessions   RescheduleSession[]
 
@@ -172,7 +164,6 @@ model Appointment {
   @@index([tenantId, locationId])
   @@index([campaignId])
   @@index([status])
-  @@index([noShowRiskScore])
   @@index([eventId])
   @@map("appointments")
 }
@@ -531,22 +522,6 @@ model WidgetConfig {
   @@map("widget_configs")
 }
 
-model Referral {
-  id             String    @id @default(uuid()) @db.Uuid
-  referrerUserId String    @map("referrer_user_id") @db.Uuid
-  referredUserId String    @unique @map("referred_user_id") @db.Uuid
-  rewardType     String    @default("SMS_CREDITS") @map("reward_type")
-  rewardValue    Int       @default(50) @map("reward_value")
-  rewardIssued   Boolean   @default(false) @map("reward_issued")
-  rewardIssuedAt DateTime? @map("reward_issued_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  referred       User      @relation("ReferredReferral", fields: [referredUserId], references: [id], onDelete: Cascade)
-  referrer       User      @relation("ReferrerReferrals", fields: [referrerUserId], references: [id], onDelete: Cascade)
-
-  @@index([referrerUserId])
-  @@map("referrals")
-}
-
 model FailoverLog {
   id          String      @id @default(uuid()) @db.Uuid
   tenantId    String      @map("tenant_id") @db.Uuid
@@ -643,27 +618,6 @@ model WorkflowExecution {
   @@map("workflow_executions")
 }
 
-model PredictionLog {
-  id                  String       @id @default(uuid()) @db.Uuid
-  tenantId            String       @map("tenant_id") @db.Uuid
-  appointmentId       String?      @map("appointment_id") @db.Uuid
-  customerId          String       @map("customer_id") @db.Uuid
-  riskScore           Float        @map("risk_score")
-  riskLevel           String       @map("risk_level")
-  signals             Json         @default("{}")
-  escalationTriggered Boolean      @default(false) @map("escalation_triggered")
-  escalationChannels  String[]     @default([]) @map("escalation_channels")
-  generatedAt         DateTime     @default(now()) @map("generated_at")
-  eventId             String?      @map("event_id") @db.Uuid
-  appointment         Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  event               Event?       @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  tenant              Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([appointmentId])
-  @@map("prediction_logs")
-}
-
 model FeedbackRequest {
   id            String             @id @default(uuid()) @db.Uuid
   tenantId      String             @map("tenant_id") @db.Uuid
@@ -700,44 +654,6 @@ model FeedbackResponse {
 
   @@index([tenantId])
   @@map("feedback_responses")
-}
-
-model ReactivationCampaign {
-  id              String                @id @default(uuid()) @db.Uuid
-  tenantId        String                @map("tenant_id") @db.Uuid
-  name            String
-  inactivityDays  Int                   @default(60) @map("inactivity_days")
-  discountOffer   String?               @map("discount_offer")
-  messageTemplate String                @map("message_template")
-  channel         ChannelType           @default(SMS)
-  status          CampaignStatus        @default(ACTIVE)
-  lastRunAt       DateTime?             @map("last_run_at")
-  totalContacted  Int                   @default(0) @map("total_contacted")
-  totalResponded  Int                   @default(0) @map("total_responded")
-  createdAt       DateTime              @default(now()) @map("created_at")
-  updatedAt       DateTime              @updatedAt @map("updated_at")
-  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contacts        ReactivationContact[]
-
-  @@index([tenantId])
-  @@map("reactivation_campaigns")
-}
-
-model ReactivationContact {
-  id          String               @id @default(uuid()) @db.Uuid
-  tenantId    String               @map("tenant_id") @db.Uuid
-  campaignId  String               @map("campaign_id") @db.Uuid
-  customerId  String               @map("customer_id") @db.Uuid
-  phone       String
-  sentAt      DateTime             @default(now()) @map("sent_at")
-  responded   Boolean              @default(false)
-  respondedAt DateTime?            @map("responded_at")
-  campaign    ReactivationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([campaignId, customerId])
-  @@index([tenantId])
-  @@map("reactivation_contacts")
 }
 
 model Tag {
@@ -954,7 +870,6 @@ model Event {
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   feedbackRequests     FeedbackRequest[]
   messageLogs          MessageLog[]
-  predictionLogs       PredictionLog[]
   reminders            Reminder[]
   rsvpEvents           RsvpEvent[]
 

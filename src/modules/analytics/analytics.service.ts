@@ -255,7 +255,6 @@ export class AnalyticsService {
       confirmedRsvps,
       messagesSent,
       activeCampaigns,
-      noShowRisk,
     ] = await Promise.all([
       this.prisma.contact.count({
         where: this.analyticsFilterService.applyTenantFilter(
@@ -292,16 +291,6 @@ export class AnalyticsService {
           excludeDemo,
         ),
       }),
-      this.prisma.appointment.findMany({
-        where: this.analyticsFilterService.applyTenantFilter(
-          { ...where, noShowRiskScore: { gt: 0.7 } },
-          tenantId,
-          excludeDemo,
-        ),
-        select: { id: true, title: true, noShowRiskScore: true },
-        take: 5,
-        orderBy: { noShowRiskScore: 'desc' },
-      }),
     ]);
 
     return {
@@ -310,7 +299,6 @@ export class AnalyticsService {
       confirmed_rsvps: confirmedRsvps,
       messages_sent: messagesSent,
       active_campaigns: activeCampaigns,
-      no_show_risk: noShowRisk,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -549,6 +537,31 @@ export class AnalyticsService {
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
+  }
+
+  // ── Onboarding progress ────────────────────
+
+  async getOnboardingProgress(tenantId: string) {
+    const [contactCount, eventCount, workflowCount, tenant] = await Promise.all([
+      this.prisma.contact.count({ where: { tenantId } }),
+      this.prisma.event.count({ where: { tenantId } }),
+      this.prisma.workflow.count({ where: { tenantId } }),
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { subscriptionStatus: true, planType: true },
+      }),
+    ]);
+
+    return {
+      steps: [
+        { id: 'contacts', label: 'Add your first contact', done: contactCount > 0, count: contactCount },
+        { id: 'events', label: 'Create your first event', done: eventCount > 0, count: eventCount },
+        { id: 'automations', label: 'Set up an automation', done: workflowCount > 0, count: workflowCount },
+        { id: 'billing', label: 'Subscribe to a plan', done: tenant?.subscriptionStatus === 'ACTIVE', count: 0 },
+      ],
+      completedSteps: [contactCount > 0, eventCount > 0, workflowCount > 0, tenant?.subscriptionStatus === 'ACTIVE'].filter(Boolean).length,
+      totalSteps: 4,
+    };
   }
 
   // ── Legacy stub (kept for backward compat) ─

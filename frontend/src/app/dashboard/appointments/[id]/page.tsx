@@ -265,6 +265,7 @@ export default function AppointmentDetailPage() {
                         disabled={statusChanging}
                         onChange={(e) => handleStatusChange(e.target.value)}
                         className="input"
+                        title="Change the current status of this appointment."
                         style={{ fontSize: 13, padding: '6px 10px', cursor: 'pointer', minWidth: 140 }}
                     >
                         <option value="SCHEDULED">Scheduled</option>
@@ -300,20 +301,24 @@ export default function AppointmentDetailPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                         <div className="input-group">
                             <label className="input-label">Title</label>
-                            <input className="input" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                            <input className="input" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} 
+                                title="The descriptive title for this appointment." />
                         </div>
                         <div className="input-group">
                             <label className="input-label">Date & Time</label>
-                            <input className="input" type="datetime-local" value={editScheduledAt} onChange={(e) => setEditScheduledAt(e.target.value)} />
+                            <input className="input" type="datetime-local" value={editScheduledAt} onChange={(e) => setEditScheduledAt(e.target.value)} 
+                                title="The scheduled date and time." />
                         </div>
                         <div className="input-group">
                             <label className="input-label">Duration (min)</label>
-                            <input className="input" type="number" value={editDuration} onChange={(e) => setEditDuration(Number(e.target.value))} min={5} />
+                            <input className="input" type="number" value={editDuration} onChange={(e) => setEditDuration(Number(e.target.value))} min={5} 
+                                title="How many minutes the appointment is expected to last." />
                         </div>
                     </div>
                     <div className="input-group" style={{ marginBottom: 14 }}>
                         <label className="input-label">Notes</label>
-                        <textarea className="input" rows={3} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
+                        <textarea className="input" rows={3} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} 
+                            title="Any additional internal notes or customer requirements." />
                     </div>
                     <div style={{ display: 'flex', gap: 10 }}>
                         <button onClick={() => setEditing(false)} className="btn btn-outline btn-sm">Cancel</button>

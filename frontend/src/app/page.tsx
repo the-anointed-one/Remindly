@@ -1,6 +1,11 @@
+'use client';
+import { useState } from 'react';
 import Navbar from '@/components/marketing/Navbar';
 import Footer from '@/components/marketing/Footer';
 import HeroCarousel from '@/components/marketing/HeroCarousel';
+import IndustrySelector from '@/components/marketing/IndustrySelector';
+import IndustryWorkflow from '@/components/marketing/IndustryWorkflow';
+import IndustrySection from '@/components/marketing/IndustrySection';
 import Link from 'next/link';
 import Image from 'next/image';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -159,6 +164,8 @@ const INTEGRATIONS = [
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Home() {
+    const [selectedIndustry, setSelectedIndustry] = useState('clinics');
+
     return (
         <>
             <Navbar />
@@ -167,8 +174,15 @@ export default function Home() {
                 {/* ── 1. Hero Carousel (parallax lives inside the component) ── */}
                 <HeroCarousel />
 
+                {/* Industry selector */}
+                <IndustrySelector
+                    selected={selectedIndustry}
+                    onSelect={setSelectedIndustry}
+                />
+                <IndustryWorkflow selected={selectedIndustry} />
+
                 {/* ── 2. Industry Selection ─────────────────────── */}
-                {/* Removed for onboarding-driven personalization */}
+                <IndustrySection />
 
                 {/* ── 3. Features ───────────────────────────────── */}
                 <section className={styles.featuresSection} id="features">

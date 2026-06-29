@@ -5,12 +5,12 @@ import { faBolt, faLock, faShield, faTimes, faEnvelope, faCheck } from '@fortawe
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useCurrency } from '@/hooks/useCurrency';
 
 const PLANS = [
     {
         id: 'SMS',
         name: 'Starter',
-        price: '₦5,000',
         period: '/month',
         description: 'Perfect for small businesses',
         color: 'var(--primary)',
@@ -27,7 +27,6 @@ const PLANS = [
     {
         id: 'SMS_VOICE',
         name: 'Growth',
-        price: '₦10,000',
         period: '/month',
         description: 'For growing teams',
         color: 'var(--success)',
@@ -45,7 +44,6 @@ const PLANS = [
     {
         id: 'SMS_VOICE_AI',
         name: 'Pro',
-        price: '₦18,000',
         period: '/month',
         description: 'Full power, maximum results',
         color: 'var(--accent-cta)',
@@ -63,6 +61,7 @@ const PLANS = [
 
 export default function PlanSelectionPage() {
     const router = useRouter();
+    const currency = useCurrency();
     const [selected, setSelected] = useState('SMS_VOICE');
 
     const handleContinue = () => {
@@ -130,7 +129,7 @@ export default function PlanSelectionPage() {
                                 </div>
 
                                 <div style={{ marginBottom: 20 }}>
-                                    <span style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)' }}>{plan.price}</span>
+                                    <span style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)' }}>{currency.plans[plan.id as keyof typeof currency.plans].price}</span>
                                     <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>{plan.period}</span>
                                 </div>
 

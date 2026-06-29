@@ -9,4 +9,4 @@ import { MockSendService } from '../messaging/mock-send.service';
   providers: [ReschedulingService, TwilioProvider, MockSendService],
   exports: [ReschedulingService],
 })
-export class ReschedulingModule {}
+export class ReschedulingModule { }

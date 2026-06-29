@@ -23,6 +23,7 @@ interface UsageInfo {
 interface AuthState {
     user: User | null;
     loading: boolean;
+    isAuthenticated: boolean;
     plan: string;
     subscriptionStatus: string;
     trialActive: boolean;
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [state, setState] = useState<AuthState>({
         user: null,
         loading: true,
+        isAuthenticated: false,
         plan: 'SMS',
         subscriptionStatus: 'TRIALING',
         trialActive: false,
@@ -66,13 +68,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
             const token = localStorage.getItem('accessToken');
             if (!token) {
-                if (isMounted.current) setState((s) => ({ ...s, loading: false, user: null }));
+                if (isMounted.current) setState((s) => ({ ...s, loading: false, user: null, isAuthenticated: false }));
                 return;
             }
 
             const [userRes, billingRes] = await Promise.all([
-                api.get('/users/me').catch(() => null),
-                api.get('/billing').catch(() => null),
+                api.get('/users/me').catch((err) => {
+                    if (process.env.NODE_ENV === 'development') console.error('[Auth] Fetch profile failed:', err);
+                    return null;
+                }),
+                api.get('/billing').catch((err) => {
+                    if (process.env.NODE_ENV === 'development') console.error('[Auth] Fetch billing failed:', err);
+                    return null;
+                }),
             ]);
 
             const user = userRes?.data;
@@ -83,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     ...s,
                     loading: false,
                     user: user || null,
+                    isAuthenticated: !!user,
                     plan: billing?.plan || 'SMS',
                     subscriptionStatus: billing?.status || 'TRIALING',
                     trialActive: billing?.trial?.active ?? false,
@@ -92,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
         } catch {
             if (isMounted.current) {
-                setState((s) => ({ ...s, loading: false, user: null }));
+                setState((s) => ({ ...s, loading: false, user: null, isAuthenticated: false }));
             }
         }
     }, []);
@@ -112,7 +121,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('refreshToken', data.refreshToken);
 
         // Fetch billing to decide where to redirect
-        const billing = await api.get('/billing').catch(() => null);
+        const billing = await api.get('/billing').catch((err) => {
+            if (process.env.NODE_ENV === 'development') console.error('[Auth] Login billing fetch failed:', err);
+            return null;
+        });
         await fetchProfile();
 
         const status = billing?.data?.status;
@@ -131,15 +143,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
         // New users always start at plan selection — trial begins only after card
-        fetchProfile().catch(() => { });
+        fetchProfile().catch((err) => {
+            if (process.env.NODE_ENV === 'development') console.error('[Auth] Post-registration profile fetch failed:', err);
+        });
         router.push('/onboarding/plan');
     };
 
     const logout = () => {
-        api.post('/auth/logout').catch(() => { });
+        api.post('/auth/logout').catch((err) => {
+            if (process.env.NODE_ENV === 'development') console.error('[Auth] Logout failed:', err);
+        });
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
-        setState((s) => ({ ...s, user: null, loading: false }));
+        setState((s) => ({ ...s, user: null, loading: false, isAuthenticated: false }));
         router.push('/login');
     };
 
@@ -156,7 +172,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     usage: data.usage || s.usage,
                 }));
             }
-        } catch { }
+        } catch (err) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('[Auth] Refresh usage failed:', err);
+            }
+        }
     };
 
     const refreshProfile = async () => {

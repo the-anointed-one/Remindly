@@ -340,4 +340,4 @@ const campaignWorker = new CampaignWorker();
 process.on('SIGTERM', () => campaignWorker.shutdown());
 process.on('SIGINT', () => campaignWorker.shutdown());
 
-setInterval(() => {}, 60000);
+setInterval(() => { }, 60000);
