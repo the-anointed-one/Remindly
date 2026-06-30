@@ -62,7 +62,7 @@ import {
               });
 
               if (participant) {
-                const workflowQueue = new Queue('meetora-workflows', {
+                const workflowQueue = new Queue('meetora-event-workflows', {
                   connection: getRedisConnection(),
                 });
                 await workflowQueue.add(

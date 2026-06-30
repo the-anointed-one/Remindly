@@ -21,7 +21,7 @@ export class UsageController {
   @Get('check/sms')
   async checkSms(@CurrentUser('tenantId') tenantId: string) {
     const result = await this.usageValidation.validate(tenantId, 'SMS');
-    const rateLimit = this.rateLimitService.getStatus(tenantId, 'SMS');
+    const rateLimit = await this.rateLimitService.getStatus(tenantId, 'SMS');
     return { ...result, rateLimit };
   }
 
@@ -33,7 +33,7 @@ export class UsageController {
   @Get('check/ai')
   async checkAi(@CurrentUser('tenantId') tenantId: string) {
     const result = await this.usageValidation.validate(tenantId, 'AI');
-    const rateLimit = this.rateLimitService.getStatus(tenantId, 'AI');
+    const rateLimit = await this.rateLimitService.getStatus(tenantId, 'AI');
     return { ...result, rateLimit };
   }
 }

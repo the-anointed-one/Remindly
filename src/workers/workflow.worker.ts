@@ -7,7 +7,7 @@ import {
 import { Worker, Queue, Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-  WORKFLOW_QUEUE,
+  EVENT_WORKFLOW_QUEUE,
   REMINDER_QUEUE,
   getRedisConnection,
   EventWorkflowJobData,
@@ -28,7 +28,7 @@ export class WorkflowWorker implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     this.worker = new Worker<EventWorkflowJobData>(
-      WORKFLOW_QUEUE,
+      EVENT_WORKFLOW_QUEUE,
       async (job) => {
         if (job.name === 'event-workflow') {
           return this.processEventWorkflow(job);

@@ -80,6 +80,11 @@ export class WorkflowProcessorService implements OnModuleInit, OnModuleDestroy {
 
     if (!action) {
       this.logger.warn(`Action ${actionId} not found — skipping`);
+      await this.prisma.workflowExecution.update({
+        where: { id: executionId },
+        data: { actionsSkipped: { increment: 1 } },
+      });
+      if (isLastAction) await this.markExecutionComplete(executionId);
       return;
     }
 
@@ -144,8 +149,9 @@ export class WorkflowProcessorService implements OnModuleInit, OnModuleDestroy {
 
     // Fix: If entityData specifies a single contact/customer, target ONLY them.
     // This prevents triggers like 'attendance_confirmed' from messaging all event participants.
-    if (entityData.customerId || entityData.contactId) {
-      const cid = (entityData.customerId || entityData.contactId) as string;
+    if (entityData.contactId || entityData.customerId) {
+      // Prefer contactId (Contact table) over customerId (Customer table, different model)
+      const cid = (entityData.contactId || entityData.customerId) as string;
       const contact = await this.prisma.contact.findUnique({
         where: { id: cid },
       });
@@ -225,8 +231,24 @@ export class WorkflowProcessorService implements OnModuleInit, OnModuleDestroy {
           break;
         }
         case 'send_voice': {
-          if (phone)
-            await this.messagingService.send(tenantId, 'VOICE', phone, message);
+          if (phone) {
+            // Build appointmentData so TwiML is generated (not mocked)
+            const apptData = (entityData.appointmentTitle || entityData.appointmentId)
+              ? {
+                  title: String(entityData.appointmentTitle ?? 'your appointment'),
+                  customerName: String(recipient.name ?? vars.customer_name ?? ''),
+                  time: String(entityData.scheduledAt ?? ''),
+                }
+              : undefined;
+            await this.messagingService.send(
+              tenantId,
+              'VOICE',
+              phone,
+              message,
+              undefined,
+              apptData,
+            );
+          }
           break;
         }
         case 'send_email': {

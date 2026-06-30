@@ -21,6 +21,8 @@ export class UsageResetJob {
       const { count } = await this.prisma.tenant.updateMany({
         data: {
           automationExecutionsThisMonth: 0,
+          aiUsageCount: 0,
+          smsUsageCount: 0,
           lastResetDate: new Date(),
         },
       });

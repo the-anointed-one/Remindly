@@ -41,9 +41,17 @@ export class MessagingService {
     let success = false;
     let error: string | undefined;
 
+    // ── Tenant sender identity ──────────────────
+    const tenantSettings = await this.prisma.tenant
+      .findUnique({ where: { id: tenantId }, select: { settings: true } })
+      .then((t) => (t?.settings as Record<string, unknown>) ?? {});
+    const senderPhone = (tenantSettings.senderPhone as string) || undefined;
+    const senderEmail = (tenantSettings.senderEmail as string) || undefined;
+    const senderName  = (tenantSettings.senderName  as string) || undefined;
+
     if (channel === 'SMS') {
       if (this.useTwilio) {
-        const result = await this.twilioProvider.sendSms(to, content);
+        const result = await this.twilioProvider.sendSms(to, content, senderPhone);
         success = result.success;
         providerMessageId = result.providerMessageId;
         error = result.error;
@@ -79,7 +87,9 @@ export class MessagingService {
             ? `Reminder: ${appointmentData.title}`
             : 'You have a reminder from Meetora',
           text: content,
-          html: `<p>${content}</p>`,
+          html: `<p>${content.replace(/\n/g, '<br>')}</p>`,
+          fromName: senderName,
+          fromEmail: senderEmail,
         });
         success = true;
         providerMessageId = `email_${Date.now()}`;

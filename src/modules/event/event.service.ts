@@ -11,7 +11,7 @@ import { MessagingService } from '../messaging/messaging.service';
 import { ReminderSchedulerService } from '../reminder/reminder-scheduler.service';
 import { Queue } from 'bullmq';
 import {
-  WORKFLOW_QUEUE,
+  EVENT_WORKFLOW_QUEUE,
   CAMPAIGN_QUEUE,
   getRedisConnection,
   EventWorkflowJobData,
@@ -35,7 +35,7 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     const connection = getRedisConnection();
-    this.workflowQueue = new Queue<EventWorkflowJobData>(WORKFLOW_QUEUE, {
+    this.workflowQueue = new Queue<EventWorkflowJobData>(EVENT_WORKFLOW_QUEUE, {
       connection,
     });
     this.campaignQueue = new Queue<CampaignJobData>(CAMPAIGN_QUEUE, {

@@ -1,8 +1,10 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import Redis from 'ioredis';
 
 // Config
 import { envValidationSchema } from './config/env.validation';
@@ -93,8 +95,23 @@ import { RsvpModule } from './modules/rsvp/rsvp.module';
     EventModule,
     RsvpModule,
 
-    // Rate limiting: 100 requests per 60 seconds per IP
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    // Rate limiting: 100 requests per 60 seconds per IP — backed by Redis
+    // so the limit is enforced globally across all API replicas.
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [{ ttl: 60000, limit: 100 }],
+        storage: new ThrottlerStorageRedisService(
+          new Redis({
+            host: config.get('REDIS_HOST', 'localhost'),
+            port: config.get<number>('REDIS_PORT', 6379),
+            password: config.get('REDIS_PASSWORD'),
+            keyPrefix: 'throttle:',
+          }),
+        ),
+      }),
+    }),
 
     // Cron jobs (UsageResetJob etc.)
     ScheduleModule.forRoot(),

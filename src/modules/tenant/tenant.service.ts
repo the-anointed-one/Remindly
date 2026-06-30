@@ -34,4 +34,28 @@ export class TenantService {
       select: { settings: true },
     });
   }
+
+  // ── Sender Identity ────────────────────────
+
+  async getSenderIdentity(tenantId: string) {
+    const settings = await this.getSettings(tenantId);
+    return {
+      senderName:  (settings.senderName  as string) ?? null,
+      senderEmail: (settings.senderEmail as string) ?? null,
+      senderPhone: (settings.senderPhone as string) ?? null,
+    };
+  }
+
+  async updateSenderIdentity(
+    tenantId: string,
+    dto: { senderName?: string; senderEmail?: string; senderPhone?: string },
+  ) {
+    const patch: Record<string, unknown> = {};
+    if (dto.senderName  !== undefined) patch.senderName  = dto.senderName.trim();
+    if (dto.senderEmail !== undefined) patch.senderEmail = dto.senderEmail.trim();
+    if (dto.senderPhone !== undefined) patch.senderPhone = dto.senderPhone.trim();
+    await this.updateSettings(tenantId, patch);
+    this.logger.log(`Sender identity updated for tenant ${tenantId}`);
+    return this.getSenderIdentity(tenantId);
+  }
 }

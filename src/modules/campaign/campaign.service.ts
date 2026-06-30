@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -20,9 +21,9 @@ import {
   getRedisConnection,
   CampaignJobData,
 } from '../../queue/queue.config';
+import { getLimitsForPlan } from '../plan/plan-limits';
 
-// Threshold above which sends are queued rather than processed inline
-const LARGE_AUDIENCE_THRESHOLD = 100;
+const AUDIENCE_BATCH_SIZE = 1_000;
 
 @Injectable()
 export class CampaignService {
@@ -370,6 +371,31 @@ export class CampaignService {
 
   // ── Audience Resolution ───────────────────
 
+  /**
+   * Count audience without loading it into memory — used for plan limit check.
+   */
+  private async countAudience(tenantId: string, segmentId: string): Promise<number> {
+    const segment = await this.prisma.audienceSegment.findFirst({
+      where: { id: segmentId, campaign: { tenantId } },
+    });
+    if (!segment) throw new NotFoundException('Audience segment not found');
+
+    if (!segment.tagId) {
+      return this.prisma.contact.count({ where: { tenantId, unsubscribed: false } });
+    }
+
+    return this.prisma.contactTag.count({
+      where: {
+        tagId: segment.tagId,
+        contact: { tenantId, unsubscribed: false },
+      },
+    });
+  }
+
+  /**
+   * Stream contacts in cursor-batched pages of 1,000 — never loads the full
+   * list into memory at once, safe for any audience size.
+   */
   async resolveAudience(
     tenantId: string,
     segmentId: string,
@@ -384,34 +410,41 @@ export class CampaignService {
     if (!segment) throw new NotFoundException('Audience segment not found');
 
     if (!segment.tagId) {
-      // No tag filter — return all active contacts for the tenant
-      return this.prisma.contact.findMany({
-        where: { tenantId, unsubscribed: false },
-        select: { id: true, phone: true, email: true, name: true },
-      });
+      // All unsubscribed=false contacts — stream with cursor pagination
+      const results: { id: string; phone: string | null; email: string | null; name: string }[] = [];
+      let cursor: string | undefined;
+
+      for (;;) {
+        const batch = await this.prisma.contact.findMany({
+          where: { tenantId, unsubscribed: false },
+          select: { id: true, phone: true, email: true, name: true },
+          take: AUDIENCE_BATCH_SIZE,
+          orderBy: { id: 'asc' },
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        });
+
+        results.push(...batch);
+        if (batch.length < AUDIENCE_BATCH_SIZE) break;
+        cursor = batch[batch.length - 1].id;
+      }
+
+      return results;
     }
 
-    // Contacts linked via ContactTag join table
+    // Contacts linked via ContactTag join table — typically smaller, one pass is fine
     const contactTags = await this.prisma.contactTag.findMany({
-      where: { tagId: segment.tagId },
+      where: {
+        tagId: segment.tagId,
+        contact: { tenantId, unsubscribed: false },
+      },
       include: {
         contact: {
-          select: {
-            id: true,
-            phone: true,
-            email: true,
-            name: true,
-            unsubscribed: true,
-            tenantId: true,
-          },
+          select: { id: true, phone: true, email: true, name: true },
         },
       },
     });
 
-    return contactTags
-      .map((ct) => ct.contact)
-      .filter((c) => c.tenantId === tenantId && !c.unsubscribed)
-      .map(({ id, phone, email, name }) => ({ id, phone, email, name }));
+    return contactTags.map((ct) => ct.contact);
   }
 
   // ── Campaign Dispatch ─────────────────────
@@ -423,8 +456,29 @@ export class CampaignService {
   ) {
     await this.findOneCampaign(tenantId, campaignId);
 
+    // ── 1. Enforce plan-based audience limit (cheap COUNT, no data loaded) ──
+    const tenant = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { planType: true, trialActive: true },
+    });
+    const effectivePlan = tenant.trialActive ? 'TRIAL' : tenant.planType;
+    const limits = getLimitsForPlan(effectivePlan);
+
+    const audienceCount = await this.countAudience(tenantId, dto.segmentId);
+
+    if (audienceCount === 0) {
+      return { queued: 0, message: 'No eligible contacts in segment' };
+    }
+
+    if (audienceCount > limits.campaignAudienceLimit) {
+      throw new ForbiddenException(
+        `Your plan allows campaigns to at most ${limits.campaignAudienceLimit} contacts. ` +
+        `This segment has ${audienceCount}. Please upgrade your plan or narrow the audience.`,
+      );
+    }
+
+    // ── 2. Load audience (now safe — count already passed the gate) ──
     const audience = await this.resolveAudience(tenantId, dto.segmentId);
-    const audienceSize = audience.length;
 
     // Fetch location info if this campaign is tied to an appointment
     const appointment = await this.prisma.appointment.findFirst({
@@ -433,64 +487,23 @@ export class CampaignService {
     });
     const locationName = appointment?.location?.name;
 
-    if (audienceSize === 0) {
-      return { queued: 0, message: 'No eligible contacts in segment' };
-    }
-
     const scheduledAt = new Date(dto.scheduledAt);
-
-    if (audienceSize > LARGE_AUDIENCE_THRESHOLD) {
-      // Large audience → push one job per contact to BullMQ
-      const delay = Math.max(0, scheduledAt.getTime() - Date.now());
-      let queued = 0;
-
-      for (const contact of audience) {
-        const jobData: CampaignJobData = {
-          tenantId,
-          campaignId,
-          segmentId: dto.segmentId,
-          contactId: contact.id,
-          recipient: contact.phone || contact.email || '',
-          channel: dto.channel,
-          messageTemplate: dto.messageTemplate,
-          scheduledFor: scheduledAt.toISOString(),
-          contactName: contact.name,
-          locationName,
-        };
-
-        await this.campaignQueue.add(
-          `campaign:${campaignId}:${contact.id}`,
-          jobData,
-          {
-            delay,
-            attempts: parseInt(process.env.CAMPAIGN_JOB_ATTEMPTS ?? '3', 10),
-            backoff: {
-              type: 'exponential',
-              delay: parseInt(process.env.CAMPAIGN_BACKOFF_DELAY ?? '2000', 10),
-            },
-            removeOnComplete: { count: 100 },
-            removeOnFail: { count: 50 },
-            jobId: `campaign-send:${campaignId}:${contact.id}`,
-          },
-        );
-        queued++;
-      }
-
-      this.logger.log(
-        `Campaign ${campaignId}: queued ${queued} jobs (large audience path)`,
-      );
-      return {
-        queued,
-        message: `${queued} messages queued for background delivery`,
-      };
-    }
-
-    // Small audience (≤100) → process inline in the same request cycle
     const delay = Math.max(0, scheduledAt.getTime() - Date.now());
-    let queued = 0;
+    const jobOpts = {
+      delay,
+      attempts: parseInt(process.env.CAMPAIGN_JOB_ATTEMPTS ?? '3', 10),
+      backoff: {
+        type: 'exponential' as const,
+        delay: parseInt(process.env.CAMPAIGN_BACKOFF_DELAY ?? '2000', 10),
+      },
+      removeOnComplete: { count: 100 },
+      removeOnFail: { count: 50 },
+    };
 
-    for (const contact of audience) {
-      const jobData: CampaignJobData = {
+    // ── 3. Build job array and dispatch in a single Redis pipeline call ──
+    const jobs = audience.map((contact) => ({
+      name: `campaign:${campaignId}:${contact.id}`,
+      data: {
         tenantId,
         campaignId,
         segmentId: dto.segmentId,
@@ -501,30 +514,19 @@ export class CampaignService {
         scheduledFor: scheduledAt.toISOString(),
         contactName: contact.name,
         locationName,
-      };
+      } satisfies CampaignJobData,
+      opts: {
+        ...jobOpts,
+        jobId: `campaign-send:${campaignId}:${contact.id}`,
+      },
+    }));
 
-      await this.campaignQueue.add(
-        `campaign:${campaignId}:${contact.id}`,
-        jobData,
-        {
-          delay,
-          attempts: parseInt(process.env.CAMPAIGN_JOB_ATTEMPTS ?? '3', 10),
-          backoff: {
-            type: 'exponential',
-            delay: parseInt(process.env.CAMPAIGN_BACKOFF_DELAY ?? '2000', 10),
-          },
-          removeOnComplete: { count: 100 },
-          removeOnFail: { count: 50 },
-          jobId: `campaign-send:${campaignId}:${contact.id}`,
-        },
-      );
-      queued++;
-    }
+    await this.campaignQueue.addBulk(jobs);
 
     this.logger.log(
-      `Campaign ${campaignId}: queued ${queued} jobs (small audience path)`,
+      `Campaign ${campaignId}: bulk-queued ${jobs.length} jobs via addBulk`,
     );
-    return { queued, message: `${queued} messages scheduled` };
+    return { queued: jobs.length, message: `${jobs.length} messages queued for delivery` };
   }
 
   // ── Segment contact count ─────────────────

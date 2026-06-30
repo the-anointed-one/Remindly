@@ -91,6 +91,9 @@ export interface UnreadCheckJobData {
 
 // ── Workflow queue ────────────────────────────
 export const WORKFLOW_QUEUE = 'meetora-workflows';
+// Separate queue for event-automation jobs (RSVPs, follow-ups, etc.)
+// Keeps event-workflow jobs from competing with execute-action jobs.
+export const EVENT_WORKFLOW_QUEUE = 'meetora-event-workflows';
 
 export const WORKFLOW_JOB_OPTIONS = {
   attempts: 3,

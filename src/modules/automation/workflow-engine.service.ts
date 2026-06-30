@@ -68,7 +68,7 @@ export class WorkflowEngineService {
 
       // ── Loop detection ──────────────────────
       // Use the triggering entity id as the "contactId" proxy for loop tracking
-      const allowed = this.tracker.trackExecution(workflow.id, entityId);
+      const allowed = await this.tracker.trackExecution(workflow.id, entityId);
       if (!allowed) {
         this.logger.warn(
           `Skipping workflow "${workflow.name}" for entity ${entityId} — loop limit reached`,
@@ -101,7 +101,7 @@ export class WorkflowEngineService {
           isLastAction: i === workflow.actions.length - 1,
         };
 
-        const jobId = `wf:${execution.id}:step:${i}`;
+        const jobId = `wf_${execution.id}_step_${i}`;
         await this.queue.add('execute-action', jobData, {
           ...WORKFLOW_JOB_OPTIONS,
           delay: cumulativeDelay,

@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReminderSchedulerService } from '../reminder/reminder-scheduler.service';
+import { EventLifecycleService } from '../appointment/event-lifecycle.service';
 import { SaveWidgetConfigDto, CreateBookingDto } from './dto/widget-config.dto';
 
 interface ServiceItem {
@@ -23,6 +24,7 @@ export class BookingWidgetService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly reminderScheduler: ReminderSchedulerService,
+    private readonly eventLifecycle: EventLifecycleService,
   ) {}
 
   // ── Config management ──────────────────────
@@ -233,11 +235,65 @@ export class BookingWidgetService {
       },
     });
 
+    // ── Upsert Contact record so automations have a reachable recipient ──
+    // The Contact model is what automations target; Customer is for appointments.
+    // We upsert by phone or email within the tenant to avoid duplicates.
+    let contact = await this.prisma.contact.findFirst({
+      where: {
+        tenantId,
+        OR: [
+          ...(dto.phone ? [{ phone: dto.phone }] : []),
+          ...(dto.email ? [{ email: dto.email }] : []),
+        ],
+      },
+    });
+
+    if (!contact) {
+      contact = await this.prisma.contact.create({
+        data: {
+          tenantId,
+          name: dto.name.trim(),
+          phone: dto.phone || null,
+          email: dto.email || null,
+        },
+      });
+    }
+
+    // ── Link contact as event participant (needed for event-scoped automations) ──
+    // Best-effort — ignore if event participant table not applicable for widget bookings
+    await this.prisma.appointmentParticipant.upsert({
+      where: { appointmentId_contactId: { appointmentId: appointment.id, contactId: contact.id } },
+      create: { appointmentId: appointment.id, contactId: contact.id },
+      update: {},
+    }).catch(() => {});
+
     // Schedule reminder jobs
     const reminders = await this.reminderScheduler.scheduleForAppointment(
       appointment.id,
       tenantId,
     );
+
+    // Link reminders to contact
+    if (reminders.length > 0) {
+      await this.prisma.reminder.updateMany({
+        where: { id: { in: reminders.map((r) => r.id) } },
+        data: { contactId: contact.id },
+      });
+    }
+
+    // ── Fire automation trigger ──
+    this.eventLifecycle
+      .onEventScheduled(tenantId, appointment.id, {
+        appointmentId: appointment.id,
+        appointmentTitle: appointment.title,
+        customerId: customer.id,
+        contactId: contact.id,
+        customerName: `${customer.firstName} ${customer.lastName}`,
+        customerPhone: customer.phone ?? undefined,
+        customerEmail: customer.email ?? undefined,
+        tenantId,
+      })
+      .catch(() => {});
 
     this.logger.log(
       `Widget booking: appointment ${appointment.id} for ${dto.name}, ${reminders.length} reminders scheduled`,

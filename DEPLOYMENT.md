@@ -1,5 +1,132 @@
 # Meetora — Deployment & Rollback Guide
 
+---
+
+## DevOps Setup (one-time)
+
+### Architecture
+
+```
+GitHub repo
+   │
+   ├─ push to main → GitHub Actions CI (.github/workflows/ci.yml)
+   │                  lint + typecheck + build (both frontend and backend)
+   │
+   └─ CI passes → GitHub Actions Deploy (.github/workflows/deploy.yml)
+                   SSH into VPS → git pull → docker compose up --build
+```
+
+### 1. Get a VPS (~$6/month)
+
+Hetzner CX22 (2 vCPU, 4GB, 40GB SSD) is the cheapest reliable option.
+
+1. Create account at [hetzner.com](https://hetzner.com) → New Server → **CX22** → Ubuntu 22.04
+2. Add your SSH public key during setup
+3. Note the server IP address
+
+### 2. Configure the server
+
+SSH in as root, then:
+
+```bash
+# Create a deploy user (don't run the app as root)
+adduser deploy
+usermod -aG sudo,docker deploy
+rsync --archive --chown=deploy:deploy ~/.ssh /home/deploy
+
+# Install Docker
+curl -fsSL https://get.docker.com | sh
+
+# Install Git
+apt-get install -y git
+
+# Clone the repo
+su - deploy
+git clone https://github.com/YOUR_ORG/meetora.git /home/deploy/meetora
+cd /home/deploy/meetora
+
+# Copy your .env file (do this from your local machine)
+# scp .env deploy@YOUR_SERVER_IP:/home/deploy/meetora/.env
+```
+
+### 3. Add GitHub Secrets
+
+In your GitHub repo → Settings → Secrets and variables → Actions, add:
+
+| Secret | Value |
+|--------|-------|
+| `DEPLOY_HOST` | Your VPS IP address |
+| `DEPLOY_USER` | `deploy` |
+| `DEPLOY_SSH_KEY` | Contents of `~/.ssh/id_rsa` (the private key) |
+| `DEPLOY_PATH` | `/home/deploy/meetora` |
+
+### 4. Domain + SSL (free via Let's Encrypt)
+
+Install Caddy on the VPS — it auto-provisions SSL and reverse-proxies to Docker:
+
+```bash
+apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+apt-get update && apt-get install -y caddy
+```
+
+Create `/etc/caddy/Caddyfile`:
+
+```
+api.yourdomain.com {
+    reverse_proxy localhost:3000
+}
+
+app.yourdomain.com {
+    reverse_proxy localhost:3001
+}
+```
+
+```bash
+systemctl enable caddy && systemctl start caddy
+```
+
+Point your DNS A records (`api.yourdomain.com`, `app.yourdomain.com`) to the VPS IP.
+Caddy handles HTTPS automatically — no certbot needed.
+
+### 5. Update environment variables for production
+
+In your `.env` on the server, update:
+
+```env
+CORS_ORIGINS=https://app.yourdomain.com
+FRONTEND_URL=https://app.yourdomain.com
+NEXT_PUBLIC_API_URL=https://api.yourdomain.com/api
+TWILIO_WEBHOOK_URL=https://api.yourdomain.com/api/webhooks/twilio/voice
+GOOGLE_REVIEWS_REDIRECT_URI=https://api.yourdomain.com/api/google-reviews/callback
+GOOGLE_CALENDAR_REDIRECT_URI=https://api.yourdomain.com/api/calendar/callback
+API_BASE_URL=https://api.yourdomain.com
+```
+
+### 6. First deploy (manual)
+
+```bash
+cd /home/deploy/meetora
+docker compose up -d --build --scale worker=2 --scale campaign-worker=2
+```
+
+### 7. Subsequent deploys (automatic)
+
+Push to `main` → GitHub Actions runs CI → if it passes → SSH deploy runs automatically.
+Total deploy time: ~3–4 minutes.
+
+### Free external services (optional upgrades)
+
+| Service | Free tier | Use when |
+|---------|-----------|----------|
+| [Sentry](https://sentry.io) | 5k errors/month | Error tracking — worth adding immediately |
+| [UptimeRobot](https://uptimerobot.com) | 50 monitors, 5-min checks | Uptime alerts to email/Slack |
+| [Neon](https://neon.tech) | 0.5GB Postgres | If you outgrow the VPS disk |
+| [Upstash](https://upstash.com) | 10k Redis req/day | Redis managed HA (may be too low for BullMQ — test first) |
+
+---
+
 ## Deployment Order
 
 1. **Database Migrations** (always first)

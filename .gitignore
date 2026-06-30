@@ -37,3 +37,13 @@ npm-debug.log*
 
 # Test coverage
 coverage/
+
+# Cowork / Claude Code local settings
+.claude/
+
+# One-off debug / temp files (untrack with: git rm --cached <file>)
+check-user.js
+test-contact.ts
+fetch-currrent-architecture.md
+"Machine instruction.md"
+*.local.md

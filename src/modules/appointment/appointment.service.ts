@@ -242,7 +242,10 @@ export class AppointmentService {
           appointmentId: appointment.id,
           appointmentTitle: appointment.title,
           customerId: customer.id,
+          contactId: contact.id,
           customerName: `${customer.firstName} ${customer.lastName}`,
+          customerPhone: customer.phone ?? undefined,
+          customerEmail: customer.email ?? undefined,
           tenantId,
         })
         .catch(() => {});

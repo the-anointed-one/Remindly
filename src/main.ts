@@ -30,6 +30,17 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
+import { createBullBoard } from '@bull-board/api';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import { ExpressAdapter } from '@bull-board/express';
+import { Queue } from 'bullmq';
+import {
+  WORKFLOW_QUEUE,
+  EVENT_WORKFLOW_QUEUE,
+  REMINDER_QUEUE,
+  CAMPAIGN_QUEUE,
+  getRedisConnection,
+} from './queue/queue.config';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -60,13 +71,18 @@ async function bootstrap() {
 
   // ── CORS ────────────────────────────────────
   const configService = app.get(ConfigService);
-  const allowedOrigins = configService.get<string>(
+  const allowedOriginsRaw = configService.get<string>(
     'CORS_ORIGINS',
     'http://localhost:3001',
   );
+  // Support comma-separated list: "https://app.meetora.co,https://www.meetora.co"
+  const allowedOrigins = allowedOriginsRaw
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
 
   app.enableCors({
-    origin: configService.get<string>('FRONTEND_URL', 'http://localhost:3001'),
+    origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
@@ -74,6 +90,32 @@ async function bootstrap() {
 
   // ── Graceful Shutdown ───────────────────────
   app.enableShutdownHooks();
+
+  // ── Bull Board (queue monitor) ───────────────
+  const serverAdapter = new ExpressAdapter();
+  serverAdapter.setBasePath('/queues');
+  const connection = getRedisConnection();
+  createBullBoard({
+    queues: [
+      WORKFLOW_QUEUE,
+      EVENT_WORKFLOW_QUEUE,
+      REMINDER_QUEUE,
+      CAMPAIGN_QUEUE,
+    ].map((name) => new BullMQAdapter(new Queue(name, { connection }))),
+    serverAdapter,
+  });
+  const qaToken = configService.get<string>('X_QA_BYPASS_TOKEN', '');
+  const guard = (req: any, res: any, next: any) => {
+    const headerToken = req.headers['x-qa-bypass-token'];
+    const queryToken = req.query?.token;
+    const authorized = headerToken === qaToken || queryToken === qaToken;
+    if (process.env.NODE_ENV !== 'production' || authorized) {
+      return next();
+    }
+    res.status(401).json({ message: 'Unauthorized' });
+  };
+  app.use('/queues', guard, serverAdapter.getRouter());
+  logger.log(`📊 Bull Board available at /queues`);
 
   // ── Start ───────────────────────────────────
   const port = configService.get<number>('PORT', 3000);

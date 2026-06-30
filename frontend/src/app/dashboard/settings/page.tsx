@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import api from '@/lib/api';
@@ -69,6 +70,20 @@ export default function SettingsPage() {
     const [profileSaved, setProfileSaved] = useState(false);
     const [profileError, setProfileError] = useState('');
 
+    // Sender identity
+    const [senderForm, setSenderForm] = useState({ senderName: '', senderEmail: '', senderPhone: '' });
+    const [senderSaving, setSenderSaving] = useState(false);
+    const [senderSaved, setSenderSaved] = useState(false);
+
+    // Team management
+    interface TeamMember { id: string; email: string; firstName: string | null; lastName: string | null; role: 'OWNER' | 'ADMIN' | 'STAFF'; createdAt: string; }
+    const [members, setMembers] = useState<TeamMember[]>([]);
+    const [inviteForm, setInviteForm] = useState({ email: '', firstName: '', lastName: '', role: 'STAFF' as 'ADMIN' | 'STAFF' });
+    const [inviting, setInviting] = useState(false);
+    const [inviteError, setInviteError] = useState('');
+    const [inviteSent, setInviteSent] = useState('');
+    const [removingId, setRemovingId] = useState<string | null>(null);
+
     // Parse locations from OAuth redirect
     useEffect(() => {
         if (locationsParam) {
@@ -101,6 +116,14 @@ export default function SettingsPage() {
                 if (data.failoverUnreadWindowMinutes) setFailoverWindow(Number(data.failoverUnreadWindowMinutes));
             })
             .catch(() => { /* use defaults */ });
+
+        api.get('/tenants/sender-identity')
+            .then(({ data }) => setSenderForm({
+                senderName:  data.senderName  ?? '',
+                senderEmail: data.senderEmail ?? '',
+                senderPhone: data.senderPhone ?? '',
+            }))
+            .catch(() => { /* use defaults */ });
     }, []);
 
     // Initialize profile form when user loads
@@ -112,6 +135,52 @@ export default function SettingsPage() {
             });
         }
     }, [user]);
+
+    // Load team members
+    useEffect(() => {
+        api.get('/users/members')
+            .then(({ data }) => setMembers(data))
+            .catch(() => {});
+    }, []);
+
+    const handleInvite = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setInviteError('');
+        setInviteSent('');
+        setInviting(true);
+        try {
+            const { data } = await api.post('/users/members/invite', inviteForm);
+            setMembers(prev => [...prev, data]);
+            setInviteForm({ email: '', firstName: '', lastName: '', role: 'STAFF' });
+            setInviteSent(`Invite sent to ${inviteForm.email}`);
+        } catch (err: any) {
+            setInviteError(err.response?.data?.message || 'Failed to send invite');
+        } finally {
+            setInviting(false);
+        }
+    };
+
+    const handleRoleChange = async (memberId: string, role: 'ADMIN' | 'STAFF') => {
+        try {
+            const { data } = await api.patch(`/users/members/${memberId}/role`, { role });
+            setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role: data.role } : m));
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Failed to update role');
+        }
+    };
+
+    const handleRemoveMember = async (memberId: string, email: string) => {
+        if (!confirm(`Remove ${email} from your team?`)) return;
+        setRemovingId(memberId);
+        try {
+            await api.delete(`/users/members/${memberId}`);
+            setMembers(prev => prev.filter(m => m.id !== memberId));
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Failed to remove member');
+        } finally {
+            setRemovingId(null);
+        }
+    };
 
     const handleSaveLocation = async () => {
         if (!selectedLocation) return;
@@ -717,6 +786,196 @@ export default function SettingsPage() {
                             <span style={{ fontSize: 13, color: 'var(--success)' }}>Saved!</span>
                         )}
                     </div>
+                </div>
+            </div>
+
+            {/* Sender Identity */}
+            <div className="glass-card" style={{ padding: '28px clamp(16px, 4vw, 32px)', marginBottom: 20 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Sender Identity</h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 20 }}>
+                    Customise the name, email, and phone number your contacts see when they receive messages.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div>
+                        <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Display Name</label>
+                        <input
+                            className="input input-bordered w-full"
+                            placeholder="e.g. Dr. Adebayo's Clinic"
+                            value={senderForm.senderName}
+                            onChange={e => setSenderForm(f => ({ ...f, senderName: e.target.value }))}
+                        />
+                    </div>
+                    <div>
+                        <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Sender Email</label>
+                        <input
+                            className="input input-bordered w-full"
+                            type="email"
+                            placeholder="e.g. hello@myclinic.com"
+                            value={senderForm.senderEmail}
+                            onChange={e => setSenderForm(f => ({ ...f, senderEmail: e.target.value }))}
+                        />
+                        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                            Domain must be verified with your email provider (e.g. Resend) to send from a custom address.
+                        </p>
+                    </div>
+                    <div>
+                        <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Sender Phone / Alphanumeric ID</label>
+                        <input
+                            className="input input-bordered w-full"
+                            placeholder="e.g. +2348012345678 or MyClinic"
+                            value={senderForm.senderPhone}
+                            onChange={e => setSenderForm(f => ({ ...f, senderPhone: e.target.value }))}
+                        />
+                        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                            Leave blank to use the shared Meetora number. Alphanumeric IDs (e.g. "MyClinic") must be enabled by your carrier.
+                        </p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <button
+                            className="btn btn-primary btn-sm"
+                            disabled={senderSaving}
+                            onClick={async () => {
+                                setSenderSaving(true);
+                                setSenderSaved(false);
+                                try {
+                                    await api.patch('/tenants/sender-identity', senderForm);
+                                    setSenderSaved(true);
+                                    setTimeout(() => setSenderSaved(false), 3000);
+                                } finally {
+                                    setSenderSaving(false);
+                                }
+                            }}
+                        >
+                            {senderSaving ? 'Saving…' : 'Save Sender Identity'}
+                        </button>
+                        {senderSaved && <span style={{ color: 'var(--success)', fontSize: 13 }}>✓ Saved</span>}
+                    </div>
+                </div>
+            </div>
+
+            {/* Team Members */}
+            {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                <div className="glass-card" style={{ padding: '28px clamp(16px, 4vw, 32px)', marginBottom: 20 }}>
+                    <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Team</h2>
+                    <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 20 }}>
+                        Invite staff and manage who has access to your Meetora workspace.
+                    </p>
+
+                    {/* Current members */}
+                    <div style={{ marginBottom: 24 }}>
+                        {members.length === 0 ? (
+                            <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>No team members yet.</p>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {members.map(m => (
+                                    <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)' }}>
+                                        {/* Avatar */}
+                                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, color: '#fff', flexShrink: 0 }}>
+                                            {(m.firstName?.[0] || m.email[0]).toUpperCase()}
+                                        </div>
+                                        {/* Name + email */}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {m.firstName || m.email} {m.lastName || ''}
+                                            </div>
+                                            <div style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.email}</div>
+                                        </div>
+                                        {/* Role badge / selector */}
+                                        {m.role === 'OWNER' ? (
+                                            <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', letterSpacing: 0.5 }}>OWNER</span>
+                                        ) : user?.role === 'OWNER' ? (
+                                            <select
+                                                value={m.role}
+                                                onChange={e => handleRoleChange(m.id, e.target.value as 'ADMIN' | 'STAFF')}
+                                                style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' }}
+                                            >
+                                                <option value="ADMIN">Admin</option>
+                                                <option value="STAFF">Staff</option>
+                                            </select>
+                                        ) : (
+                                            <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)', letterSpacing: 0.5 }}>{m.role}</span>
+                                        )}
+                                        {/* Remove */}
+                                        {m.role !== 'OWNER' && m.id !== user?.id && (
+                                            <button
+                                                onClick={() => handleRemoveMember(m.id, m.email)}
+                                                disabled={removingId === m.id}
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px 6px', borderRadius: 6, fontSize: 16, lineHeight: 1 }}
+                                                title="Remove member"
+                                            >
+                                                {removingId === m.id ? '…' : '×'}
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Invite form */}
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
+                        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Invite a team member</h3>
+                        {inviteError && (
+                            <div style={{ marginBottom: 12, padding: '9px 13px', borderRadius: 8, background: 'rgba(224,82,82,0.1)', border: '1px solid rgba(224,82,82,0.25)', color: 'var(--error)', fontSize: 13 }}>
+                                {inviteError}
+                            </div>
+                        )}
+                        {inviteSent && (
+                            <div style={{ marginBottom: 12, padding: '9px 13px', borderRadius: 8, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', color: 'var(--success)', fontSize: 13 }}>
+                                ✓ {inviteSent}
+                            </div>
+                        )}
+                        <form onSubmit={handleInvite} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+                            <input
+                                type="email"
+                                required
+                                placeholder="Email address"
+                                value={inviteForm.email}
+                                onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
+                                style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14, outline: 'none' }}
+                            />
+                            <input
+                                placeholder="First name (optional)"
+                                value={inviteForm.firstName}
+                                onChange={e => setInviteForm(f => ({ ...f, firstName: e.target.value }))}
+                                style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14, outline: 'none' }}
+                            />
+                            <select
+                                value={inviteForm.role}
+                                onChange={e => setInviteForm(f => ({ ...f, role: e.target.value as 'ADMIN' | 'STAFF' }))}
+                                style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14, cursor: 'pointer' }}
+                            >
+                                {user?.role === 'OWNER' && <option value="ADMIN">Admin — full access, no billing</option>}
+                                <option value="STAFF">Staff — view and manage appointments</option>
+                            </select>
+                            <button
+                                type="submit"
+                                disabled={inviting}
+                                className="btn btn-primary"
+                                style={{ whiteSpace: 'nowrap' }}
+                            >
+                                {inviting ? 'Sending…' : 'Send Invite'}
+                            </button>
+                        </form>
+                        <p style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
+                            They'll receive an email with a link to set their password and join the workspace.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* Booking Widget */}
+            <div className="glass-card" style={{ marginTop: 24 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Booking Widget</h2>
+                        <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0 }}>
+                            Embed a booking form on your website so clients can schedule directly.
+                        </p>
+                    </div>
+                    <Link href="/dashboard/widgets" className="btn btn-outline btn-sm">
+                        Configure →
+                    </Link>
                 </div>
             </div>
         </div>

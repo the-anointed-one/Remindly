@@ -5,6 +5,7 @@ import { SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaystackProvider } from './paystack.provider';
 import { AuditService } from '../audit/audit.service';
+import { getLimitsForPlan } from '../plan/plan-limits';
 
 @Injectable()
 export class BillingService {
@@ -209,6 +210,7 @@ export class BillingService {
     const trialDays = this.configService.get<number>('TRIAL_DURATION_DAYS', 14);
     const now = new Date();
     const trialEnd = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
+    const limits = getLimitsForPlan('TRIAL');
 
     await this.prisma.tenant.update({
       where: { id: tenantId },
@@ -217,6 +219,12 @@ export class BillingService {
         trialStartDate: now,
         trialEndDate: trialEnd,
         subscriptionStatus: 'TRIALING',
+        // Stamp trial limits so low-tier users can't exploit defaults
+        contactLimit:        limits.contactLimit,
+        workflowLimit:       limits.workflowLimit,
+        eventLimit:          limits.eventLimit,
+        aiMonthlyLimit:      limits.aiMonthlyLimit,
+        whatsappMonthlyLimit: limits.whatsappMonthlyLimit,
         ...(paystackCustomerCode
           ? { paystackCustomerId: paystackCustomerCode }
           : {}),
@@ -250,6 +258,7 @@ export class BillingService {
     amount: number,
   ) {
     const planType = this.planCodeMap[planCode] || 'SMS';
+    const limits = getLimitsForPlan(planType);
 
     await this.prisma.tenant.update({
       where: { id: tenantId },
@@ -260,10 +269,18 @@ export class BillingService {
         subscriptionRenewalDate: new Date(
           Date.now() + 30 * 24 * 60 * 60 * 1000,
         ),
+        // Reset usage counters on plan change
         smsUsageCount: 0,
         voiceUsageCount: 0,
         aiUsageCount: 0,
         whatsappUsageCount: 0,
+        automationExecutionsThisMonth: 0,
+        // Apply plan-specific limits
+        contactLimit:        limits.contactLimit,
+        workflowLimit:       limits.workflowLimit,
+        eventLimit:          limits.eventLimit,
+        aiMonthlyLimit:      limits.aiMonthlyLimit,
+        whatsappMonthlyLimit: limits.whatsappMonthlyLimit,
       },
     });
 

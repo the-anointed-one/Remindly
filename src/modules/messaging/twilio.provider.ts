@@ -42,13 +42,14 @@ export class TwilioProvider implements MessagingProvider {
 
   // ── SMS ────────────────────────────────────
 
-  async sendSms(to: string, body: string): Promise<SendSmsResult> {
+  async sendSms(to: string, body: string, fromOverride?: string): Promise<SendSmsResult> {
     try {
+      const from = fromOverride || this.fromNumber;
       const useWebhook =
         this.webhookUrl && !this.webhookUrl.includes('localhost');
       const message = await this.client.messages.create({
         to,
-        from: this.fromNumber,
+        from,
         body,
         ...(useWebhook ? { statusCallback: `${this.webhookUrl}/status` } : {}),
       });

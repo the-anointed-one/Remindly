@@ -65,7 +65,7 @@ export class AutomationService {
       where: { tenantId },
       include: {
         trigger: true,
-        actions: { orderBy: { stepOrder: 'asc' } },
+        actions: { orderBy: { stepOrder: 'asc' }, include: { conditions: true } },
         _count: { select: { executions: true } },
       },
       orderBy: { createdAt: 'desc' },

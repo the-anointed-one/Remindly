@@ -19,7 +19,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:qa": "npx ts-node scripts/test-qa-bypass.ts",
+    "test:qa": "npx ts-node -r tsconfig-paths/register scripts/test-qa-bypass.ts",
     "worker:reminder": "npx ts-node -r tsconfig-paths/register src/workers/reminder.worker.ts",
     "worker:campaign": "npx ts-node -r tsconfig-paths/register src/workers/campaign.worker.ts",
     "seed": "npx ts-node prisma/seed.ts",
@@ -28,10 +28,12 @@
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
     "worker:prod": "node dist/workers/reminder.worker.js",
-    "test:qa": "npx ts-node -r tsconfig-paths/register scripts/test-qa-bypass.ts",
     "migrate:billing-currency": "npx ts-node -r tsconfig-paths/register scripts/migrate-billing-currency.ts"
   },
   "dependencies": {
+    "@bull-board/api": "^8.0.1",
+    "@bull-board/express": "^8.0.1",
+    "@nest-lab/throttler-storage-redis": "^1.2.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",

@@ -430,12 +430,12 @@ function ActionCard({
                                     : `${action.delayMinutes}m`} delay
                             </span>
                         )}
-                        {action.conditions.length > 0 && (
+                        {(action.conditions?.length ?? 0) > 0 && (
                             <span style={{
                                 fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 100,
                                 background: 'rgba(99,102,241,0.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)',
                             }}>
-                                {action.conditions.length} cond.
+                                {action.conditions?.length ?? 0} cond.
                             </span>
                         )}
                     </div>
@@ -1034,7 +1034,11 @@ export default function AutomationsPage() {
         setLoading(true);
         try {
             const res = await api.get('/automations');
-            setWorkflows(res.data);
+            const normalized = (res.data as Workflow[]).map(wf => ({
+                ...wf,
+                actions: (wf.actions ?? []).map(a => ({ ...a, conditions: a.conditions ?? [] })),
+            }));
+            setWorkflows(normalized);
         } catch {
             // silently fail
         } finally {

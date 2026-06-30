@@ -23,4 +23,17 @@ export class TenantController {
   ) {
     return this.tenantService.updateSettings(tenantId, settings);
   }
+
+  @Get('sender-identity')
+  getSenderIdentity(@CurrentUser('tenantId') tenantId: string) {
+    return this.tenantService.getSenderIdentity(tenantId);
+  }
+
+  @Patch('sender-identity')
+  updateSenderIdentity(
+    @CurrentUser('tenantId') tenantId: string,
+    @Body() dto: { senderName?: string; senderEmail?: string; senderPhone?: string },
+  ) {
+    return this.tenantService.updateSenderIdentity(tenantId, dto);
+  }
 }

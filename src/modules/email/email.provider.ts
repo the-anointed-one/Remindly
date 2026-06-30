@@ -7,6 +7,8 @@ export interface SendEmailOptions {
   subject: string;
   html: string;
   text?: string;
+  fromName?: string;   // tenant override e.g. "Dr. Adebayo's Clinic"
+  fromEmail?: string;  // tenant override e.g. "hello@myclinic.com"
 }
 
 @Injectable()
@@ -51,8 +53,15 @@ export class EmailProvider {
     }
 
     try {
+      // Use tenant sender identity if provided, else fall back to system default
+      const from = options.fromEmail
+        ? options.fromName
+          ? `${options.fromName} <${options.fromEmail}>`
+          : options.fromEmail
+        : this.fromAddress;
+
       await this.transporter.sendMail({
-        from: this.fromAddress,
+        from,
         to: options.to,
         subject: options.subject,
         html: options.html,

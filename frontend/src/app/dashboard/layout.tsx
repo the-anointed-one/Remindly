@@ -23,7 +23,6 @@ import UserMenu from '@/components/navigation/UserMenu';
 // ── CORE ─────────────────────────────────────────────────────
 const NAV_CORE = [
     { href: '/dashboard', icon: faChartLine, label: 'Dashboard' },
-    { href: '/dashboard/calendar', icon: faCalendar, label: 'Calendar' },
     { href: '/dashboard/events', icon: faCalendar, label: 'Events' },
 ];
 
