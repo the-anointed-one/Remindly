@@ -15,19 +15,9 @@ const nextConfig: NextConfig = {
         // Minimum time between re-optimizations per image (1 week)
         minimumCacheTTL: 60 * 60 * 24 * 7,
     },
-    async redirects() {
-        return [
-            {
-                source: '/dashboard/appointments',
-                destination: '/dashboard/events',
-                permanent: true,
-            },
-            {
-                source: '/dashboard/appointments/:id',
-                destination: '/dashboard/events/:id',
-                permanent: true,
-            },
-        ];
+    turbopack: {
+        // Silence the workspace-root warning — frontend is the Next.js root
+        root: __dirname,
     },
 };
 
