@@ -545,6 +545,44 @@ export class AppointmentService {
     return { deleted: true, cancelledReminders: result.cancelled };
   }
 
+  async findToday(tenantId: string) {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    return this.prisma.appointment.findMany({
+      where: { tenantId, scheduledAt: { gte: start, lte: end } },
+      include: {
+        customer: true,
+        location: true,
+        reminders: { orderBy: { scheduledSendTime: 'asc' } },
+      },
+      orderBy: { scheduledAt: 'asc' },
+    });
+  }
+
+  /** Upcoming (next 48 h) appointments that are not yet CONFIRMED */
+  async findNeedsAttention(tenantId: string) {
+    const now = new Date();
+    const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+    return this.prisma.appointment.findMany({
+      where: {
+        tenantId,
+        scheduledAt: { gte: now, lte: in48h },
+        status: { notIn: ['CONFIRMED', 'COMPLETED', 'CANCELLED'] },
+      },
+      include: {
+        customer: true,
+        location: true,
+        reminders: { orderBy: { scheduledSendTime: 'asc' } },
+      },
+      orderBy: { scheduledAt: 'asc' },
+      take: 20,
+    });
+  }
+
   async getPipeline(tenantId: string, id: string) {
     return this.eventLifecycle.getPipeline(tenantId, id);
   }

@@ -1088,6 +1088,61 @@ export default function AutomationsPage() {
         loadWorkflows();
     };
 
+    const [seedingDefaults, setSeedingDefaults] = useState(false);
+
+    const seedDefaults = async () => {
+        setSeedingDefaults(true);
+        const defaults = [
+            {
+                name: 'Booking confirmation',
+                description: 'Send an SMS when an appointment is booked',
+                isActive: true,
+                trigger: { type: 'appointment_created', config: {} },
+                actions: [{
+                    stepOrder: 0,
+                    type: 'send_sms',
+                    delayMinutes: 0,
+                    config: { message: "Hi {{name}}, your appointment has been booked for {{scheduledAt}}. Reply YES to confirm or NO to cancel." },
+                    conditions: [],
+                }],
+            },
+            {
+                name: '48-hour reminder',
+                description: 'Remind the client 2 days before their appointment',
+                isActive: true,
+                trigger: { type: 'appointment_created', config: {} },
+                actions: [{
+                    stepOrder: 0,
+                    type: 'send_sms',
+                    delayMinutes: 2880, // 48h — fires 48h after booking; pair with reminder rules for time-relative reminders
+                    config: { message: "Hi {{name}}, just a reminder about your appointment tomorrow. Reply YES to confirm or call us to reschedule." },
+                    conditions: [{ conditionType: 'appointment_status_is', operator: 'not_equals', value: 'CONFIRMED' }],
+                }],
+            },
+            {
+                name: 'Post-visit follow-up',
+                description: 'Check in after the appointment is completed',
+                isActive: true,
+                trigger: { type: 'appointment_completed', config: {} },
+                actions: [{
+                    stepOrder: 0,
+                    type: 'send_sms',
+                    delayMinutes: 60,
+                    config: { message: "Hi {{name}}, thanks for visiting us today! We hope everything went well. Feel free to reach out if you need anything." },
+                    conditions: [],
+                }],
+            },
+        ];
+        try {
+            await Promise.all(defaults.map(d => api.post('/automations', d)));
+            loadWorkflows();
+        } catch {
+            // silently fail — user can create manually
+        } finally {
+            setSeedingDefaults(false);
+        }
+    };
+
     if (view === 'builder') {
         return (
             <div>
@@ -1106,10 +1161,10 @@ export default function AutomationsPage() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4" style={{ marginBottom: 28 }}>
                 <div>
                     <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                        Automations
+                        Follow-ups
                     </h1>
                     <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>
-                        Build trigger-based workflows to send messages, tag contacts, and more
+                        Automated messages that fire when appointments are booked, confirmed, or completed
                     </p>
                 </div>
                 <button
@@ -1147,13 +1202,56 @@ export default function AutomationsPage() {
                     Loading workflows…
                 </div>
             ) : workflows.length === 0 ? (
-                <EmptyState
-                    title="No workflows yet"
-                    description="Create your first automation workflow to send reminders, follow-ups, and review requests automatically."
-                    icon={faBolt}
-                    ctaLabel="Create First Workflow"
-                    ctaAction={() => { setEditingWorkflow(null); setView('builder'); }}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    {/* Smart defaults card */}
+                    <div style={{
+                        padding: '32px 28px',
+                        background: 'linear-gradient(135deg, rgba(107,62,46,0.07) 0%, rgba(245,158,11,0.04) 100%)',
+                        border: '1px solid var(--border)', borderRadius: 20, textAlign: 'center',
+                    }}>
+                        <div style={{ fontSize: 36, color: 'var(--primary)', marginBottom: 16 }}>
+                            <Icon icon={faBolt} />
+                        </div>
+                        <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Set up in 1 click</h2>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: 14, maxWidth: 400, margin: '0 auto 24px', lineHeight: 1.6 }}>
+                            We'll create 3 smart defaults for you — a booking confirmation, a 48-hour reminder, and a post-visit follow-up.
+                        </p>
+                        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+                            <button
+                                className="btn btn-primary"
+                                onClick={seedDefaults}
+                                disabled={seedingDefaults}
+                                style={{ fontWeight: 700, opacity: seedingDefaults ? 0.7 : 1 }}
+                            >
+                                {seedingDefaults ? 'Setting up…' : 'Use smart defaults'}
+                            </button>
+                            <button
+                                className="btn"
+                                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
+                                onClick={() => { setEditingWorkflow(null); setView('builder'); }}
+                            >
+                                Build from scratch
+                            </button>
+                        </div>
+                        {/* Preview of what gets created */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 24, textAlign: 'left' }}>
+                            {[
+                                { emoji: '📋', label: 'Booking confirmation', desc: 'SMS sent immediately on booking' },
+                                { emoji: '⏰', label: '48-hour reminder', desc: 'Reminder sent if not yet confirmed' },
+                                { emoji: '✅', label: 'Post-visit follow-up', desc: 'Check-in sent 1h after completion' },
+                            ].map(item => (
+                                <div key={item.label} style={{
+                                    padding: '14px 16px', background: 'var(--bg-card)',
+                                    borderRadius: 12, border: '1px solid var(--border)',
+                                }}>
+                                    <div style={{ fontSize: 20, marginBottom: 6 }}>{item.emoji}</div>
+                                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 3 }}>{item.label}</div>
+                                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{item.desc}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
             ) : (
                 /* Workflow grid */
                 <div className="grid-2" style={{ gap: 16 }}>

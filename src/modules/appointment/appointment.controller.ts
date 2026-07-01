@@ -42,6 +42,16 @@ export class AppointmentController {
     );
   }
 
+  @Get('today')
+  findToday(@CurrentUser('tenantId') tenantId: string) {
+    return this.appointmentService.findToday(tenantId);
+  }
+
+  @Get('needs-attention')
+  findNeedsAttention(@CurrentUser('tenantId') tenantId: string) {
+    return this.appointmentService.findNeedsAttention(tenantId);
+  }
+
   @Get(':id')
   findOne(
     @CurrentUser('tenantId') tenantId: string,
