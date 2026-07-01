@@ -10,6 +10,12 @@ RUN npm ci
 FROM node:20-alpine AS builder
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# TEMPORARY — dev/test only. Powers the "skip payment" button on the
+# checkout page (see onboarding/checkout/page.tsx). Remove this ARG/ENV
+# pair, the button, and the backend /billing/test-checkout route together
+# before deploying to production.
+ARG NEXT_PUBLIC_QA_BYPASS_TOKEN
+ENV NEXT_PUBLIC_QA_BYPASS_TOKEN=$NEXT_PUBLIC_QA_BYPASS_TOKEN
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

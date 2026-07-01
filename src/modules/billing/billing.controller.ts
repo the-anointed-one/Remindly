@@ -47,6 +47,38 @@ export class BillingController {
       tenantId,
       body.plan,
       email,
+      body.provider || 'PAYSTACK',
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // TEMPORARY — DEV/TEST ONLY. Remove before deploying to production.
+  // Fakes a completed checkout for any provider (Paystack/PayPal/Crypto)
+  // without calling out to the real payment vendor, so the onboarding flow
+  // can be tested end-to-end without live payment credentials configured.
+  // Gated the same way as /billing/initialize-qa: requires
+  // ENABLE_QA_BYPASS=true (non-production only) plus a valid x-qa-bypass
+  // header matching QA_BYPASS_TOKEN.
+  // ──────────────────────────────────────────────────────────────────────
+  @Post('test-checkout')
+  @UseGuards(JwtAuthGuard, QaBypassGuard)
+  async testCheckout(
+    @CurrentUser('tenantId') tenantId: string,
+    @Body() body: InitializeBillingDto,
+    @Req() req: any,
+  ) {
+    if (!req.qaMockPayment) {
+      this.logger.warn('test-checkout attempted without valid QA bypass');
+      return {
+        success: false,
+        error: 'Test checkout is disabled — set ENABLE_QA_BYPASS and pass a valid x-qa-bypass header',
+      };
+    }
+
+    return this.billingService.testCheckout(
+      tenantId,
+      body.plan,
+      body.provider || 'PAYSTACK',
     );
   }
 

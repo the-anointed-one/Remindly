@@ -82,6 +82,7 @@ services:
       PAYSTACK_CALLBACK_URL: ${PAYSTACK_CALLBACK_URL}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
       TWILIO_WEBHOOK_URL: ${TWILIO_WEBHOOK_URL}
       GOOGLE_REVIEWS_REDIRECT_URI: ${GOOGLE_REVIEWS_REDIRECT_URI}
@@ -143,6 +144,7 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
+      API_BASE_URL: ${API_BASE_URL}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
       WORKER_COUNT: ${WORKER_COUNT:-2}
     depends_on:
@@ -185,6 +187,7 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
+      API_BASE_URL: ${API_BASE_URL}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
@@ -207,6 +210,9 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
+        # TEMPORARY — dev/test only. Remove alongside the checkout page's
+        # "skip payment" button and the /billing/test-checkout route.
+        - NEXT_PUBLIC_QA_BYPASS_TOKEN=${QA_BYPASS_TOKEN:-}
     restart: unless-stopped
     ports:
       - "3001:3001"

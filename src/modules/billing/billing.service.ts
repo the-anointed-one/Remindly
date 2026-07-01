@@ -4,16 +4,26 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaystackProvider } from './paystack.provider';
+import { PaypalProvider } from './paypal.provider';
+import { CryptoProvider } from './crypto.provider';
+import { BillingProvider } from './billing.provider';
 import { AuditService } from '../audit/audit.service';
 import { getLimitsForPlan } from '../plan/plan-limits';
+
+/** Supported billing providers. Keep in sync with SubscriptionRecord.provider values. */
+export type PaymentProvider = 'PAYSTACK' | 'PAYPAL' | 'CRYPTO';
 
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
 
-  // Plan code → PlanType mapping
-  private readonly planCodeMap: Record<string, string>;
-  private readonly planIdToCodeMap: Record<string, string>;
+  // Plan code → PlanType mapping, one per provider (each vendor has its own
+  // plan identifiers — Paystack plan codes, PayPal plan IDs, etc.)
+  private readonly planCodeMaps: Record<PaymentProvider, Record<string, string>>;
+  private readonly planIdToCodeMaps: Record<
+    PaymentProvider,
+    Record<string, string>
+  >;
   private readonly planIdToPriceMap: Record<string, number>;
   private readonly currency: string;
 
@@ -21,25 +31,65 @@ export class BillingService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly paystackProvider: PaystackProvider,
+    private readonly paypalProvider: PaypalProvider,
+    private readonly cryptoProvider: CryptoProvider,
     private readonly auditService: AuditService,
   ) {
-    this.planCodeMap = {
-      [this.configService.get('PAYSTACK_SMS_PLAN_CODE', '')]: 'SMS',
-      [this.configService.get('PAYSTACK_SMS_VOICE_PLAN_CODE', '')]: 'SMS_VOICE',
-      [this.configService.get('PAYSTACK_SMS_VOICE_AI_PLAN_CODE', '')]:
-        'SMS_VOICE_AI',
-    };
-
-    this.planIdToCodeMap = {
+    const paystackCodes = {
       starter: this.configService.get('PAYSTACK_SMS_PLAN_CODE', ''),
       growth: this.configService.get('PAYSTACK_SMS_VOICE_PLAN_CODE', ''),
       pro: this.configService.get('PAYSTACK_SMS_VOICE_AI_PLAN_CODE', ''),
-      SMS: this.configService.get('PAYSTACK_SMS_PLAN_CODE', ''),
-      SMS_VOICE: this.configService.get('PAYSTACK_SMS_VOICE_PLAN_CODE', ''),
-      SMS_VOICE_AI: this.configService.get(
-        'PAYSTACK_SMS_VOICE_AI_PLAN_CODE',
-        '',
-      ),
+    };
+
+    // PayPal billing plan IDs — created once via the PayPal dashboard/API,
+    // analogous to Paystack's PLN_ codes. Empty until configured.
+    const paypalCodes = {
+      starter: this.configService.get('PAYPAL_STARTER_PLAN_ID', ''),
+      growth: this.configService.get('PAYPAL_GROWTH_PLAN_ID', ''),
+      pro: this.configService.get('PAYPAL_PRO_PLAN_ID', ''),
+    };
+
+    // Crypto has no pre-registered "plan" concept on Coinbase's side — the
+    // charge amount is sent directly, so the plan id itself doubles as the code.
+    const cryptoCodes = { starter: 'starter', growth: 'growth', pro: 'pro' };
+
+    this.planIdToCodeMaps = {
+      PAYSTACK: {
+        ...paystackCodes,
+        SMS: paystackCodes.starter,
+        SMS_VOICE: paystackCodes.growth,
+        SMS_VOICE_AI: paystackCodes.pro,
+      },
+      PAYPAL: {
+        ...paypalCodes,
+        SMS: paypalCodes.starter,
+        SMS_VOICE: paypalCodes.growth,
+        SMS_VOICE_AI: paypalCodes.pro,
+      },
+      CRYPTO: {
+        ...cryptoCodes,
+        SMS: cryptoCodes.starter,
+        SMS_VOICE: cryptoCodes.growth,
+        SMS_VOICE_AI: cryptoCodes.pro,
+      },
+    };
+
+    this.planCodeMaps = {
+      PAYSTACK: {
+        [paystackCodes.starter]: 'SMS',
+        [paystackCodes.growth]: 'SMS_VOICE',
+        [paystackCodes.pro]: 'SMS_VOICE_AI',
+      },
+      PAYPAL: {
+        [paypalCodes.starter]: 'SMS',
+        [paypalCodes.growth]: 'SMS_VOICE',
+        [paypalCodes.pro]: 'SMS_VOICE_AI',
+      },
+      CRYPTO: {
+        starter: 'SMS',
+        growth: 'SMS_VOICE',
+        pro: 'SMS_VOICE_AI',
+      },
     };
 
     // Load USD prices from environment (in cents)
@@ -62,6 +112,27 @@ export class BillingService {
     };
 
     this.currency = this.configService.get('PAYSTACK_CURRENCY', 'USD');
+  }
+
+  /** Backward-compat accessor — existing webhook code reads Paystack's map directly. */
+  private get planCodeMap(): Record<string, string> {
+    return this.planCodeMaps.PAYSTACK;
+  }
+
+  private get planIdToCodeMap(): Record<string, string> {
+    return this.planIdToCodeMaps.PAYSTACK;
+  }
+
+  private getProvider(provider: PaymentProvider): BillingProvider {
+    switch (provider) {
+      case 'PAYPAL':
+        return this.paypalProvider;
+      case 'CRYPTO':
+        return this.cryptoProvider;
+      case 'PAYSTACK':
+      default:
+        return this.paystackProvider;
+    }
   }
 
   /**
@@ -518,13 +589,17 @@ export class BillingService {
     tenantId: string,
     planId: string, // 'SMS', 'SMS_VOICE', etc.
     email: string,
+    provider: PaymentProvider = 'PAYSTACK',
   ) {
-    const planCode = this.planIdToCodeMap[planId];
+    const planCode = this.planIdToCodeMaps[provider]?.[planId];
     if (!planCode) {
-      throw new BadRequestException(`Invalid plan ID: ${planId}`);
+      throw new BadRequestException(
+        `Invalid plan ID "${planId}" for provider ${provider}`,
+      );
     }
 
-    const result = await this.paystackProvider.initializeSubscription({
+    const billingProvider = this.getProvider(provider);
+    const result = await billingProvider.initializeSubscription({
       email,
       customerCode: email,
       planCode,
@@ -535,13 +610,65 @@ export class BillingService {
       throw new BadRequestException(result.error);
     }
 
+    // Track the pending subscription so the webhook (or verify() below) has
+    // something to match against once payment completes.
+    await this.prisma.subscriptionRecord.create({
+      data: {
+        tenantId,
+        provider,
+        providerSubscriptionId: result.reference,
+        planType: (this.planCodeMaps[provider][planCode] || 'SMS') as any,
+        status: 'TRIALING',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        amount: 0,
+        currency: this.currency,
+      },
+    });
+
     return {
       authorizationUrl: result.authorizationUrl,
       reference: result.reference,
+      provider,
     };
   }
 
-  async verifyTransaction(tenantId: string, reference: string) {
+  async verifyTransaction(
+    tenantId: string,
+    reference: string,
+    provider: PaymentProvider = 'PAYSTACK',
+  ) {
+    if (provider !== 'PAYSTACK') {
+      // PayPal/Crypto verification goes through the shared provider
+      // interface rather than a hand-rolled fetch, since only Paystack's
+      // REST shape was hardcoded here originally.
+      const billingProvider = this.getProvider(provider);
+      const result = await billingProvider.verifyTransaction(reference);
+
+      if (!result.success || result.status !== 'success') {
+        this.logger.error(
+          `Payment verification failed for reference ${reference} (${provider}): ${result.error}`,
+        );
+        throw new BadRequestException('Payment verification failed');
+      }
+
+      await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: {
+          subscriptionStatus: 'TRIALING',
+          trialActive: true,
+          trialStartDate: new Date(),
+          trialEndDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      this.logger.log(
+        `Payment verified (${provider}) and trial activated for tenant ${tenantId}`,
+      );
+
+      return { verified: true };
+    }
+
     const response = await fetch(
       `https://api.paystack.co/transaction/verify/${reference}`,
       {
@@ -571,5 +698,59 @@ export class BillingService {
     this.logger.log(`Payment verified and trial activated for tenant ${tenantId}`);
 
     return { verified: true };
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // TEMPORARY — DEV/TEST ONLY. Remove this method and its controller route
+  // (POST /billing/test-checkout) before deploying to production.
+  //
+  // Fakes a completed checkout for any provider without calling
+  // Paystack/PayPal/Coinbase at all, so the onboarding → dashboard flow can
+  // be exercised end-to-end in environments that don't have real payment
+  // credentials configured. Gated by ENABLE_QA_BYPASS in the controller.
+  // ──────────────────────────────────────────────────────────────────────
+  async testCheckout(
+    tenantId: string,
+    planId: string,
+    provider: PaymentProvider,
+  ) {
+    const planType = this.planCodeMaps[provider]?.[
+      this.planIdToCodeMaps[provider]?.[planId] ?? ''
+    ] || planId;
+    const mockRef = `TEST_${provider}_${Date.now()}`;
+
+    await this.prisma.subscriptionRecord.create({
+      data: {
+        tenantId,
+        provider,
+        providerSubscriptionId: mockRef,
+        planType: planType as any,
+        status: 'TRIALING',
+        amount: 0,
+        currency: this.currency,
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        subscriptionStatus: 'TRIALING',
+        trialActive: true,
+        trialStartDate: new Date(),
+        trialEndDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    this.logger.warn(
+      `[TEST CHECKOUT] Faked ${provider} checkout for tenant ${tenantId}, plan ${planId} — remove before deploy`,
+    );
+
+    return {
+      authorizationUrl: `${this.configService.get('FRONTEND_URL', 'http://localhost:3001')}/onboarding/callback?provider=${provider}&status=success&test=true`,
+      reference: mockRef,
+      provider,
+    };
   }
 }

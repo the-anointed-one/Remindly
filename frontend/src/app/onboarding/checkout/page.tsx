@@ -3,7 +3,6 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBolt, faLock, faShield, faTimes, faEnvelope, faCheck } from '@fortawesome/free-solid-svg-icons';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
 import { useCurrency } from '@/hooks/useCurrency';
@@ -27,10 +26,24 @@ declare global {
     interface Window { PaystackPop: any; }
 }
 
+type Provider = 'PAYSTACK' | 'PAYPAL' | 'CRYPTO';
+
+const PROVIDERS: { id: Provider; label: string; note: string }[] = [
+    { id: 'PAYSTACK', label: 'Card (Paystack)', note: 'Card, bank transfer, USSD' },
+    { id: 'PAYPAL', label: 'PayPal', note: 'Pay with your PayPal balance or card' },
+    { id: 'CRYPTO', label: 'Crypto', note: 'BTC, ETH, USDC via Coinbase Commerce' },
+];
+
+// Dev-only: lets the onboarding flow be tested end-to-end without real
+// PayPal/Coinbase credentials configured. Remove alongside the backend
+// /billing/test-checkout route before deploying to production.
+const IS_TEST_MODE = process.env.NODE_ENV !== 'production';
+const QA_BYPASS_TOKEN = process.env.NEXT_PUBLIC_QA_BYPASS_TOKEN || '';
+
 export default function CheckoutPage() {
-    const router = useRouter();
     const currency = useCurrency();
     const [plan, setPlan] = useState('SMS_VOICE');
+    const [provider, setProvider] = useState<Provider>('PAYSTACK');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -53,14 +66,11 @@ export default function CheckoutPage() {
         setError('');
         setLoading(true);
         try {
-            const token = localStorage.getItem('accessToken');
-            if (!token) { router.push('/login'); return; }
-
-            // Ask backend to initialize a Paystack authorization
-            const { data } = await api.post('/billing/initialize', { plan });
+            // Auth is handled by HttpOnly cookies — api sends them automatically.
+            const { data } = await api.post('/billing/initialize', { plan, provider });
 
             if (data.authorizationUrl) {
-                // Redirect to Paystack hosted checkout
+                // Redirect to the chosen provider's hosted checkout
                 window.location.href = data.authorizationUrl;
             } else {
                 setError('Could not initialize checkout. Please try again.');
@@ -68,6 +78,30 @@ export default function CheckoutPage() {
         } catch (err: any) {
             const msg = err?.response?.data?.message || 'Checkout initialization failed.';
             setError(msg);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Dev-only: bypass the real payment provider entirely and mark the
+    // subscription active locally, so the dashboard can be reached without
+    // live PayPal/Coinbase credentials. Remove before production deploy.
+    const handleTestCheckout = async () => {
+        setError('');
+        setLoading(true);
+        try {
+            const { data } = await api.post(
+                '/billing/test-checkout',
+                { plan, provider },
+                { headers: { 'x-qa-bypass': QA_BYPASS_TOKEN } },
+            );
+            if (data.authorizationUrl) {
+                window.location.href = data.authorizationUrl;
+            } else {
+                setError(data.error || 'Test checkout failed — check ENABLE_QA_BYPASS/QA_BYPASS_TOKEN.');
+            }
+        } catch (err: any) {
+            setError(err?.response?.data?.message || 'Test checkout failed.');
         } finally {
             setLoading(false);
         }
@@ -137,6 +171,30 @@ export default function CheckoutPage() {
                         </div>
                     </div>
 
+                    {/* Payment method picker */}
+                    <div style={{ marginBottom: 24 }}>
+                        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Payment method</h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {PROVIDERS.map((p) => (
+                                <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => setProvider(p.id)}
+                                    style={{
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        width: '100%', textAlign: 'left', padding: '12px 16px', borderRadius: 8,
+                                        border: provider === p.id ? '1px solid var(--primary)' : '1px solid #2a2a35',
+                                        background: provider === p.id ? 'rgba(0, 169, 157, 0.08)' : '#0d0d0f',
+                                        cursor: 'pointer', color: 'var(--text-primary)',
+                                    }}
+                                >
+                                    <span style={{ fontWeight: 600, fontSize: 14 }}>{p.label}</span>
+                                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{p.note}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     {error && (
                         <div style={{ background: 'rgba(224, 82, 82, 0.1)', border: '1px solid rgba(224, 82, 82, 0.3)', borderRadius: 8, padding: '12px 16px', marginBottom: 20, color: 'var(--error)', fontSize: 14 }}>
                             {error}
@@ -156,10 +214,25 @@ export default function CheckoutPage() {
                         ) : 'Start 14-Day Free Trial →'}
                     </button>
 
+                    {/* Dev-only: skip the real payment provider. Remove before deploy. */}
+                    {IS_TEST_MODE && (
+                        <button
+                            onClick={handleTestCheckout}
+                            disabled={loading}
+                            style={{
+                                width: '100%', marginTop: 10, padding: '10px', fontSize: 13,
+                                background: 'transparent', border: '1px dashed #3a3a45', borderRadius: 8,
+                                color: 'var(--text-muted)', cursor: 'pointer',
+                            }}
+                        >
+                            ⚠ Skip payment (test mode — {provider})
+                        </button>
+                    )}
+
                     {/* Trust signals */}
                     <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '8px 16px', marginTop: 20, color: 'var(--text-muted)', fontSize: 12 }}>
                         <span><FontAwesomeIcon icon={faLock} style={{ marginRight: 5 }} />256-bit SSL</span>
-                        <span><FontAwesomeIcon icon={faShield} style={{ marginRight: 5 }} />Secured by Paystack</span>
+                        <span><FontAwesomeIcon icon={faShield} style={{ marginRight: 5 }} />Secured by {provider === 'PAYSTACK' ? 'Paystack' : provider === 'PAYPAL' ? 'PayPal' : 'Coinbase Commerce'}</span>
                         <span><FontAwesomeIcon icon={faTimes} style={{ marginRight: 5 }} />Cancel anytime</span>
                     </div>
                 </div>
