@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MessagingService } from '../messaging/messaging.service';
+import { appendRsvpFooter } from '../../common/utils/rsvp-footer.util';
 
 @Injectable()
 export class EventInviteService {
@@ -110,16 +111,14 @@ export class EventInviteService {
       : 'TBD';
     const location = event.location || 'Virtual event';
 
-    return `🎉 You're invited to: ${event.title}
+    const body = `🎉 You're invited to: ${event.title}
 
 📅 When: ${formattedDate}
 📍 Where: ${location}
 
-Please reply:
-• YES - I'll attend
-• NO - Can't make it
-• MAYBE - Not sure yet
-
 Or RSVP here: ${rsvpLink}`;
+
+    // appendRsvpFooter adds "Reply YES to confirm, NO to decline, or MAYBE if unsure."
+    return appendRsvpFooter(body, 'SMS');
   }
 }

@@ -29,6 +29,7 @@ import { TwilioProvider } from '../modules/messaging/twilio.provider';
 import { MockSendService } from '../modules/messaging/mock-send.service';
 import { AuditService } from '../modules/audit/audit.service';
 import { MessagingService } from '../modules/messaging/messaging.service';
+import { appendRsvpFooter } from '../common/utils/rsvp-footer.util';
 
 const configService = new ConfigService();
 const auditService = new AuditService(prisma as any);
@@ -554,10 +555,15 @@ const worker = new Worker<ReminderJobData>(
       const recipientStr = recipientObj.phone || recipientObj.email;
       if (!recipientStr) continue;
 
+      // Append RSVP footer to event reminders so recipients always know how to respond
+      const finalContent = reminder.eventId
+        ? appendRsvpFooter(messageContent || '', channel)
+        : (messageContent || '');
+
       const result = await performSend(
         channel,
         recipientStr,
-        messageContent || '',
+        finalContent,
         job,
       );
 

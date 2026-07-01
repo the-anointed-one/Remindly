@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { WorkflowEngineService } from '../automation/workflow-engine.service';
 import { MessagingService } from '../messaging/messaging.service';
+import { appendRsvpFooter } from '../../common/utils/rsvp-footer.util';
 import { ReminderSchedulerService } from '../reminder/reminder-scheduler.service';
 import { Queue } from 'bullmq';
 import {
@@ -353,8 +354,11 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
     });
     if (!event) throw new NotFoundException('Event not found');
 
-    const message = dto.message || `Reminder for ${event.title}`;
     const channel = dto.channel || 'SMS';
+    const message = appendRsvpFooter(
+      dto.message || `Reminder for ${event.title}`,
+      channel,
+    );
 
     let queuedCount = 0;
     for (const p of event.participants) {
