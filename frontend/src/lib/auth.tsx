@@ -66,12 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const fetchProfile = useCallback(async () => {
         if (!isMounted.current) return;
         try {
-            const token = localStorage.getItem('accessToken');
-            if (!token) {
-                if (isMounted.current) setState((s) => ({ ...s, loading: false, user: null, isAuthenticated: false }));
-                return;
-            }
-
+            // Auth is handled by HttpOnly cookies — no token needed in JS
             const [userRes, billingRes] = await Promise.all([
                 api.get('/users/me').catch((err) => {
                     if (process.env.NODE_ENV === 'development') console.error('[Auth] Fetch profile failed:', err);
@@ -116,11 +111,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [fetchProfile]);
 
     const login = async (email: string, password: string) => {
-        const { data } = await api.post('/auth/login', { email, password });
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
+        // Backend sets HttpOnly cookies in the response — no token handling in JS
+        await api.post('/auth/login', { email, password });
 
-        // Fetch billing to decide where to redirect
         const billing = await api.get('/billing').catch((err) => {
             if (process.env.NODE_ENV === 'development') console.error('[Auth] Login billing fetch failed:', err);
             return null;
@@ -130,7 +123,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const status = billing?.data?.status;
         const active = billing?.data?.trial?.active;
 
-        // If no active trial and not a paying subscriber → send to checkout
         if (status === 'TRIALING' && !active) {
             router.push('/onboarding/plan');
         } else {
@@ -139,10 +131,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const register = async (regData: { tenantName: string; email: string; password: string; firstName?: string; lastName?: string }) => {
-        const { data } = await api.post('/auth/register', regData);
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
-        // New users always start at plan selection — trial begins only after card
+        // Backend sets HttpOnly cookies in the response — no token handling in JS
+        await api.post('/auth/register', regData);
         fetchProfile().catch((err) => {
             if (process.env.NODE_ENV === 'development') console.error('[Auth] Post-registration profile fetch failed:', err);
         });
@@ -150,11 +140,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const logout = () => {
+        // Backend clears the HttpOnly cookies
         api.post('/auth/logout').catch((err) => {
             if (process.env.NODE_ENV === 'development') console.error('[Auth] Logout failed:', err);
         });
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
         setState((s) => ({ ...s, user: null, loading: false, isAuthenticated: false }));
         router.push('/login');
     };

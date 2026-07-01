@@ -4,11 +4,13 @@ if (!process.env.NEXT_PUBLIC_API_URL && process.env.NODE_ENV === 'production') {
     throw new Error('NEXT_PUBLIC_API_URL is required in production builds.');
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV !== 'production' ? 'http://localhost:3001/api' : '');
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV !== 'production' ? 'http://localhost:3000/api' : '');
 
 const api = axios.create({
     baseURL: API_BASE,
     headers: { 'Content-Type': 'application/json' },
+    // Required for HttpOnly cookies to be sent cross-origin
+    withCredentials: true,
 });
 
 if (process.env.NODE_ENV !== 'production') {
@@ -28,30 +30,19 @@ if (process.env.NODE_ENV !== 'production') {
     );
 }
 
-// Attach JWT token to every request
-api.interceptors.request.use((config) => {
-    if (typeof window !== 'undefined') {
-        const token = localStorage.getItem('accessToken');
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
-    }
-    return config;
-});
-
-// Handle 401 — try refresh, else redirect to login
+// Handle 401 — try silent token refresh, else redirect to login
 let isRefreshing = false;
 let failedQueue: Array<{
     resolve: (value?: unknown) => void;
     reject: (error: unknown) => void;
 }> = [];
 
-const processQueue = (error: unknown, token: string | null = null) => {
+const processQueue = (error: unknown) => {
     failedQueue.forEach((prom) => {
         if (error) {
             prom.reject(error);
         } else {
-            prom.resolve(token);
+            prom.resolve();
         }
     });
     failedQueue = [];
@@ -63,7 +54,7 @@ api.interceptors.response.use(
         const original = error.config;
 
         if (original?.url?.includes('/auth/')) {
-            // Don't try to refresh if the error happened on an auth endpoint
+            // Don't try to refresh if the error happened on an auth endpoint itself
             return Promise.reject(error);
         }
 
@@ -71,10 +62,7 @@ api.interceptors.response.use(
             if (isRefreshing) {
                 return new Promise((resolve, reject) => {
                     failedQueue.push({ resolve, reject });
-                }).then((token) => {
-                    original.headers.Authorization = `Bearer ${token}`;
-                    return api(original);
-                }).catch((err) => Promise.reject(err));
+                }).then(() => api(original)).catch((err) => Promise.reject(err));
             }
 
             original._retry = true;
@@ -82,20 +70,18 @@ api.interceptors.response.use(
 
             return new Promise(async (resolve, reject) => {
                 try {
-                    const refreshToken = localStorage.getItem('refreshToken');
-                    if (!refreshToken) throw new Error('No refresh token');
-
-                    const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
-                    localStorage.setItem('accessToken', data.accessToken);
-                    localStorage.setItem('refreshToken', data.refreshToken);
-                    api.defaults.headers.common.Authorization = `Bearer ${data.accessToken}`;
-                    processQueue(null, data.accessToken);
+                    // The refreshToken HttpOnly cookie is sent automatically via withCredentials
+                    await axios.post(`${API_BASE}/auth/refresh`, {}, { withCredentials: true });
+                    // New accessToken cookie is now set by the server — retry the original request
+                    processQueue(null);
                     resolve(api(original));
                 } catch (refreshError) {
-                    processQueue(refreshError, null);
-                    localStorage.removeItem('accessToken');
-                    localStorage.removeItem('refreshToken');
-                    if (typeof window !== 'undefined') {
+                    processQueue(refreshError);
+                    if (
+                        typeof window !== 'undefined' &&
+                        !window.location.pathname.startsWith('/login') &&
+                        !window.location.pathname.startsWith('/register')
+                    ) {
                         window.location.href = '/login';
                     }
                     reject(refreshError);
@@ -114,4 +100,3 @@ export const deleteAppointment = (id: string) => api.delete(`/appointments/${id}
 export const deleteEvent = (id: string) => api.delete(`/events/${id}`);
 
 export default api;
-

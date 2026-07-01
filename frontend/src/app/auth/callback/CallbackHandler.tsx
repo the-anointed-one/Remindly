@@ -2,37 +2,38 @@
 
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-// import { useAuth } from '@/lib/auth';
+import api from '@/lib/api';
 
 export default function CallbackHandler() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    // const { refreshProfile } = useAuth(); // Potential enhancement, but sticking to existing logic first
 
     useEffect(() => {
-        try {
-            // Try query string params first
-            let accessToken = searchParams.get('accessToken') || searchParams.get('access_token');
-            let refreshToken = searchParams.get('refreshToken') || searchParams.get('refresh_token');
+        const success = searchParams.get('success');
+        const error = searchParams.get('error');
 
-            // Fallback to URL hash
-            if (!accessToken && window.location.hash) {
-                const hashParams = new URLSearchParams(window.location.hash.substring(1));
-                accessToken = hashParams.get('accessToken') || hashParams.get('access_token');
-                refreshToken = hashParams.get('refreshToken') || hashParams.get('refresh_token');
-            }
+        if (error) {
+            router.push('/login?error=oauth_failed');
+            return;
+        }
 
-            if (accessToken && refreshToken) {
-                localStorage.setItem('accessToken', accessToken);
-                localStorage.setItem('refreshToken', refreshToken);
-                // Optionally trigger auth refresh here if needed, but sticking to existing behavior
-                router.push('/dashboard');
-            } else {
-                console.error('Missing tokens in OAuth callback');
-                router.push('/login?error=oauth_failed');
-            }
-        } catch (err) {
-            console.error('OAuth callback parsing error:', err);
+        if (success === 'true') {
+            // HttpOnly cookies were set by the backend during the OAuth redirect.
+            // Verify the session is valid, then route the user appropriately.
+            api.get('/billing')
+                .then(({ data }) => {
+                    const status = data?.status;
+                    const active = data?.trial?.active;
+                    if (status === 'TRIALING' && !active) {
+                        router.push('/onboarding/plan');
+                    } else {
+                        router.push('/dashboard');
+                    }
+                })
+                .catch(() => {
+                    router.push('/login?error=oauth_failed');
+                });
+        } else {
             router.push('/login?error=oauth_failed');
         }
     }, [router, searchParams]);
@@ -46,7 +47,7 @@ export default function CallbackHandler() {
             fontSize: 14,
             color: 'var(--text-muted)',
         }}>
-            Completing sign in...
+            Completing sign in…
         </div>
     );
 }

@@ -11,7 +11,11 @@ export class JwtRefreshStrategy extends PassportStrategy(
 ) {
   constructor(configService: ConfigService) {
     const options: StrategyOptionsWithRequest = {
-      jwtFromRequest: ExtractJwt.fromBodyField('refreshToken'),
+      // Read refresh token from HttpOnly cookie (primary) or request body (fallback)
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (req: Request) => req?.cookies?.['refreshToken'] ?? null,
+        ExtractJwt.fromBodyField('refreshToken'),
+      ]),
       ignoreExpiration: false,
       secretOrKey: configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
       passReqToCallback: true,
@@ -20,7 +24,9 @@ export class JwtRefreshStrategy extends PassportStrategy(
   }
 
   async validate(req: Request, payload: any) {
-    const refreshToken = req.body.refreshToken;
+    // Prefer cookie; fall back to body (for API clients that POST the token)
+    const refreshToken =
+      req.cookies?.['refreshToken'] ?? req.body?.refreshToken;
     return {
       userId: payload.sub,
       email: payload.email,

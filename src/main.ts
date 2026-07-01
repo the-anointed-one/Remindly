@@ -29,6 +29,8 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
+import basicAuth from 'express-basic-auth';
 import { AppModule } from './app.module';
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
@@ -56,6 +58,7 @@ async function bootstrap() {
   // ── Security ────────────────────────────────
   app.use(helmet()); // Security headers (XSS, CSP, etc.)
   app.use(compression()); // Gzip/Brotli compression
+  app.use(cookieParser()); // Parse HttpOnly auth cookies
 
   // ── Global Prefix ───────────────────────────
   app.setGlobalPrefix('api');
@@ -104,18 +107,26 @@ async function bootstrap() {
     ].map((name) => new BullMQAdapter(new Queue(name, { connection }))),
     serverAdapter,
   });
-  const qaToken = configService.get<string>('X_QA_BYPASS_TOKEN', '');
-  const guard = (req: any, res: any, next: any) => {
-    const headerToken = req.headers['x-qa-bypass-token'];
-    const queryToken = req.query?.token;
-    const authorized = headerToken === qaToken || queryToken === qaToken;
-    if (process.env.NODE_ENV !== 'production' || authorized) {
-      return next();
-    }
-    res.status(401).json({ message: 'Unauthorized' });
-  };
-  app.use('/queues', guard, serverAdapter.getRouter());
-  logger.log(`📊 Bull Board available at /queues`);
+  // Protect Bull Board with HTTP Basic Auth.
+  // Set QUEUE_BASIC_AUTH_USER + QUEUE_BASIC_AUTH_PASS in .env.
+  // In development (no creds set) access is still guarded — set the vars.
+  const queueUser = configService.get<string>('QUEUE_BASIC_AUTH_USER', '');
+  const queuePass = configService.get<string>('QUEUE_BASIC_AUTH_PASS', '');
+  if (!queueUser || !queuePass) {
+    logger.warn(
+      '⚠️  QUEUE_BASIC_AUTH_USER / QUEUE_BASIC_AUTH_PASS not set — /queues is disabled',
+    );
+    app.use('/queues', (_req: any, res: any) =>
+      res.status(503).json({ message: 'Queue dashboard not configured' }),
+    );
+  } else {
+    app.use(
+      '/queues',
+      basicAuth({ users: { [queueUser]: queuePass }, challenge: true }),
+      serverAdapter.getRouter(),
+    );
+    logger.log(`📊 Bull Board available at /queues (basic auth required)`);
+  }
 
   // ── Start ───────────────────────────────────
   const port = configService.get<number>('PORT', 3000);
