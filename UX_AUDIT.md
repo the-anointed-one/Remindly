@@ -5,82 +5,38 @@
 
 ## Summary
 
-Walked the full user journey as a brand-new signup: marketing site → register → plan selection → checkout → dashboard → each of the six main sections → settings. The core flow works and the dashboard itself is clean and well-organized. Found one navigation bug that blocks a whole section (confirmed in source), a recurring naming inconsistency between the sidebar and what pages actually call themselves (confirmed in source), and a modal-persistence issue that needs verification. One earlier finding (a "strikethrough" on the ₦ price) was retracted after checking — the Naira sign is designed with a horizontal stroke through the N; that's the correct glyph, not a bug.
+Walked the full user journey as a brand-new signup: marketing site → register → plan selection → checkout → dashboard → each of the six main sections → settings. Three issues from the first pass are confirmed fixed (verified live): the Appointments-redirects-to-Events bug, the sidebar/page naming mismatch, and onboarding-modal persistence. A new, higher-severity issue turned up while testing the fix: a brand-new account cannot create its first appointment at all.
 
 ---
 
-## 🔴 Critical — Blocks a Core Section
+## 🔴 Critical — New Finding: Dead end creating a first appointment
 
-### 1. "Appointments" nav item doesn't go to Appointments
-**File:** `frontend/src/app/dashboard/appointments/page.tsx`, line 81
+### Contact search has no path forward for a new account with zero contacts
+**Files:** `frontend/src/components/messaging/ContactSearchDropdown.tsx`, `frontend/src/app/dashboard/appointments/page.tsx` (line 338)
 
+The "Create Appointment" button is disabled by:
 ```
-useEffect(() => {
-    router.replace('/dashboard/events');
-}, [router]);
+disabled={saving || (targetType === 'contact' ? !contact : !targetId)}
 ```
+It only enables once a `contact` object has been selected from `ContactSearchDropdown`. That component's search box only ever searches existing contacts (`GET /contacts?search=...`) and only calls `onChange`/sets a contact when the user clicks a result from that search. If the search returns zero matches — which it always will for a brand-new tenant with 0 contacts — the dropdown shows "No contacts found" with no further action available. Typing an email or phone number into the box does nothing but filter a search that will never return results.
 
-This unconditional redirect fires on every mount of the Appointments page, immediately bouncing the user to `/dashboard/events` before any of the page's own logic runs. The rest of the file (400+ lines: appointment list, create form, contact search, channel selector) is fully built but unreachable dead code because of this one effect. An earlier commit message in this repo ("remove stale appointments redirect") suggests this was supposed to have been removed already.
+Net effect: a new user cannot create their first appointment through this form at all, no matter what they type — there's no way to create a contact inline. This directly contradicts the dashboard's own empty-state CTA ("Create your first appointment"), which implies this exact flow should work standalone.
 
-**Fix:** Delete lines 80–82. Confirm the page renders its own appointment list/form afterward without relying on anything the redirect was masking.
+**Fix, based on the actual component and DTO:**
+
+`ContactSearchDropdown.tsx`'s "No contacts found" state (around line 158-161) should offer to create one instead of dead-ending. The backend already supports everything needed — `CreateContactDto` (`src/modules/contacts/dto/contact.dto.ts`) requires only `name`, with `phone` and `email` both optional — so an inline "create new contact" affordance needs at minimum a name plus phone (the product's primary channel is SMS/WhatsApp, so phone matters at least as much as email, arguably more).
 
 ---
 
-## 🟠 High — Confusing, Not Blocking
+## ✅ Previously Found, Now Confirmed Fixed
 
-### 2. Sidebar labels don't match the pages they open
-**File:** `frontend/src/app/dashboard/layout.tsx`, `NAV_PRIMARY` array (lines 23–30)
-
-```
-const NAV_PRIMARY = [
-    { href: '/dashboard',              icon: faHouse,        label: 'Home' },
-    { href: '/dashboard/contacts',     icon: faUsers,        label: 'Clients' },
-    { href: '/dashboard/appointments', icon: faCalendarDays, label: 'Appointments' },
-    { href: '/dashboard/automations',  icon: faBolt,         label: 'Follow-ups' },
-    { href: '/dashboard/events',       icon: faCalendar,     label: 'Events' },
-    { href: '/dashboard/campaigns',    icon: faCommentDots,  label: 'Messages' },
-];
-```
-
-Two of these labels diverge from what the destination page calls itself:
-- `/dashboard/contacts` is labeled "Clients" in the sidebar, but the page's own H1 says "Contacts."
-- `/dashboard/campaigns` is labeled "Messages" in the sidebar, but the page's own H1 says "📣 Campaigns" — a completely different mental model (a user clicking "Messages" expects an inbox, not a campaign-blast builder).
-
-The underlying data model already uses "Contact" and "Campaign" consistently (Prisma schema: `Contact`, `Campaign` models; API routes `/contacts`, `/campaigns`; the onboarding walkthrough in `OnboardingModal.tsx` also teaches users the terms "Contacts" and "Campaign"). The sidebar is the only place using different words ("Clients", "Messages"), so it's the smallest, safest place to fix — 2 string changes in one file, versus renaming the concept everywhere else.
-
-Note there's also a `NAV_HIDDEN` array (lines 38–48) used only for the page-title lookup (`pageTitle` at line 149) for routes not in the visible nav — it has its own separate, slightly different set of label mappings (e.g. `/dashboard/campaigns` mapped to "Messages" there too, plus stray entries like `/dashboard/tags` → "Clients"). Worth reviewing for the same consistency pass while in this file.
-
-**Fix:** In `NAV_PRIMARY`, change `label: 'Clients'` → `'Contacts'` and `label: 'Messages'` → `'Campaigns'`. Cross-check `NAV_HIDDEN`'s labels against the same standard.
-
----
-
-## 🟡 Medium — Needs Verification Before Fixing
-
-### 3. Onboarding welcome modal may not be persisting dismissal reliably
-**Files:** `frontend/src/hooks/useOnboarding.ts`, `frontend/src/components/onboarding/OnboardingModal.tsx`
-
-The modal's dismissal path looks correctly designed: clicking "Skip ✕" calls `onSkip` → `skipOnboarding()` in the hook → `PATCH /tenants/settings` with `{ onboardingCompleted: true }`, and the next mount reads it back via `GET /tenants/settings`. In principle this should persist server-side, not just for a session.
-
-In testing, the modal reappeared on a second dashboard visit shortly after being dismissed once. The likely cause: the PATCH in `markComplete()` (useOnboarding.ts line 50) is fire-and-forget with a silently swallowed error —
-
-```
-api.patch('/tenants/settings', { onboardingCompleted: true }).catch(() => { });
-```
-
-— so if that request fails for any reason (auth timing, validation, a bug in the `/tenants/settings` PATCH handler), the UI still closes the modal but nothing was actually saved, and the next `GET` correctly shows `onboardingCompleted !== true` again.
-
-**Before fixing:** confirm whether the PATCH is actually succeeding — check Network tab or server logs for `PATCH /api/tenants/settings` when dismissing the modal, and check what `tenants.controller.ts` / `tenants.service.ts` actually does with an `onboardingCompleted` key (confirm it's deep-merged into the `settings` JSON as the hook's comment claims, and that a fresh `GET` afterward actually returns it). If the PATCH is failing, fix that endpoint/permission issue. If it's succeeding, the modal-reappearing bug is somewhere else (e.g. a caching issue on the GET, or the `enabled` gate on the hook firing before auth is fully resolved) — in that case add logging or a retry rather than guessing further blind.
-
----
-
-## 🟢 Retracted Finding
-
-~~Pricing page shows a strikethrough through the currency symbol~~ — checked the source and the actual Unicode Naira sign (₦, U+20A6): it's officially glyphed as an "N" with a horizontal stroke through it, by design (same idea as ¢ or the Central Bank of Nigeria's own currency symbol). What looked like a CSS bug in a screenshot is the correct rendering of the character. No fix needed.
+1. **Appointments redirect** (`dashboard/appointments/page.tsx`) — confirmed removed; page now renders its own appointment list, create form, and empty state correctly.
+2. **Sidebar naming** (`dashboard/layout.tsx` `NAV_PRIMARY`) — confirmed sidebar now reads "Contacts" and "Campaigns," matching the pages themselves.
+3. **Onboarding modal persistence** (`useOnboarding.ts` / tenant settings PATCH) — confirmed the dismissal now persists across a reload; the fix on the backend's tenant-settings handler resolved it.
 
 ---
 
 ## Priority Fix Order
 
-1. **Appointments redirect** (`appointments/page.tsx:81`) — delete the redirect. This section is currently unreachable; highest-impact fix by far, and the safest (one deletion, rest of the page is already built).
-2. **Sidebar label naming** (`dashboard/layout.tsx` `NAV_PRIMARY`) — two string changes, cheap, meaningfully improves learnability.
-3. **Onboarding modal persistence** — investigate first (see above), then fix whatever the investigation turns up.
+1. **Inline contact creation from the appointment form** — highest priority; this is a first-run dead end for every new signup, worse than the previous appointments bug since it blocks the *replacement* flow that bug's fix just enabled.
+2. Everything else from the original audit is resolved.
