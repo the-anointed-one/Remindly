@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import Icon from '@/components/ui/Icon';
-import { faSearch, faUser, faPhone, faEnvelope } from '@fortawesome/free-solid-svg-icons';
+import { faSearch, faUser, faPhone, faEnvelope, faPlus } from '@fortawesome/free-solid-svg-icons';
 
 export interface ContactSlim {
     id: string;
@@ -26,6 +26,15 @@ export default function ContactSearchDropdown({ value, onChange, multi = false, 
     const [open, setOpen] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
 
+    // Inline "create new contact" — rendered only in the zero-results state,
+    // so a brand-new tenant with no contacts can still create their first one.
+    const [creating, setCreating] = useState(false);
+    const [createName, setCreateName] = useState('');
+    const [createPhone, setCreatePhone] = useState('');
+    const [createEmail, setCreateEmail] = useState('');
+    const [createError, setCreateError] = useState('');
+    const [createSubmitting, setCreateSubmitting] = useState(false);
+
     // Click outside to close
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -43,6 +52,7 @@ export default function ContactSearchDropdown({ value, onChange, multi = false, 
             setResults([]);
             setLoading(false);
             setError(false);
+            setCreating(false);
             return;
         }
 
@@ -73,6 +83,7 @@ export default function ContactSearchDropdown({ value, onChange, multi = false, 
     }, [query]);
 
     const handleSelect = (contact: ContactSlim) => {
+        setCreating(false);
         if (multi) {
             const current = (value as ContactSlim[]) || [];
             if (!current.find((c) => c.id === contact.id)) {
@@ -91,6 +102,52 @@ export default function ContactSearchDropdown({ value, onChange, multi = false, 
             onChange(((value as ContactSlim[]) || []).filter((c) => c.id !== id));
         } else {
             onChange(null);
+        }
+    };
+
+    // Heuristic: does the typed query look like a phone number? (digits, optional
+    // +, spaces, dashes, parens — roughly 7–15 digits). Used to prefill the right
+    // field so the user only fills in what's missing.
+    const looksLikePhone = (s: string) => {
+        const digits = s.replace(/[^\d]/g, '');
+        return /^[+]?[\d\s\-()]+$/.test(s.trim()) && digits.length >= 7 && digits.length <= 15;
+    };
+
+    const openCreateForm = (q: string) => {
+        const trimmed = q.trim();
+        const isPhone = looksLikePhone(trimmed);
+        const isEmail = trimmed.includes('@');
+        setCreateName(isPhone || isEmail ? '' : trimmed);
+        setCreatePhone(isPhone ? trimmed : '');
+        setCreateEmail(isEmail ? trimmed : '');
+        setCreateError('');
+        setCreating(true);
+    };
+
+    const handleCreate = async () => {
+        const name = createName.trim();
+        if (!name) {
+            setCreateError('Name is required');
+            return;
+        }
+        setCreateSubmitting(true);
+        setCreateError('');
+        try {
+            const payload: { name: string; phone?: string; email?: string } = { name };
+            if (createPhone.trim()) payload.phone = createPhone.trim();
+            if (createEmail.trim()) payload.email = createEmail.trim();
+            const { data } = await api.post('/contacts', payload);
+            // Mirror handleSelect: select the freshly created contact and close.
+            handleSelect({ id: data.id, name: data.name, phone: data.phone, email: data.email });
+        } catch (err: any) {
+            const raw = err?.response?.data?.message;
+            setCreateError(
+                Array.isArray(raw)
+                    ? raw.join(', ')
+                    : raw || 'Could not create contact. Please try again.',
+            );
+        } finally {
+            setCreateSubmitting(false);
         }
     };
 
@@ -156,8 +213,79 @@ export default function ContactSearchDropdown({ value, onChange, multi = false, 
                             Search unavailable
                         </div>
                     ) : results.length === 0 ? (
-                        <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                            No contacts found
+                        <div style={{ padding: 12 }}>
+                            {!creating ? (
+                                <>
+                                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+                                        No contacts found
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => openCreateForm(query)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                                            padding: '10px 12px', background: 'rgba(0,169,157,0.08)',
+                                            border: '1px solid rgba(0,169,157,0.25)', borderRadius: 8,
+                                            cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)', fontSize: 13,
+                                        }}
+                                    >
+                                        <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                            <Icon icon={faPlus} />
+                                        </span>
+                                        <span>Create &ldquo;<strong>{query.trim()}</strong>&rdquo; as a new contact</span>
+                                    </button>
+                                </>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
+                                        NEW CONTACT
+                                    </div>
+                                    <input
+                                        className="input"
+                                        autoFocus
+                                        value={createName}
+                                        onChange={(e) => setCreateName(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreate(); } }}
+                                        placeholder="Name (required)"
+                                    />
+                                    <input
+                                        className="input"
+                                        value={createPhone}
+                                        onChange={(e) => setCreatePhone(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreate(); } }}
+                                        placeholder="Phone (SMS / WhatsApp / Voice)"
+                                    />
+                                    <input
+                                        className="input"
+                                        value={createEmail}
+                                        onChange={(e) => setCreateEmail(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreate(); } }}
+                                        placeholder="Email (optional)"
+                                    />
+                                    {createError && (
+                                        <div style={{ color: '#ef4444', fontSize: 12 }}>{createError}</div>
+                                    )}
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                        <button
+                                            type="button"
+                                            onClick={handleCreate}
+                                            disabled={createSubmitting || !createName.trim()}
+                                            className="btn btn-primary"
+                                            style={{ fontSize: 13, flex: 1, opacity: (createSubmitting || !createName.trim()) ? 0.6 : 1 }}
+                                        >
+                                            {createSubmitting ? 'Creating…' : 'Create & select'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setCreating(false); setCreateError(''); }}
+                                            className="btn btn-ghost"
+                                            style={{ fontSize: 13 }}
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         results.map((c) => (
