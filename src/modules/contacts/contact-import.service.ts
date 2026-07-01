@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import * as XLSX from 'xlsx';
+import * as ExcelJS from 'exceljs';
+import { Readable } from 'stream';
 import { PrismaService } from '../../prisma/prisma.service';
 import { randomUUID } from 'crypto';
 
@@ -47,7 +48,19 @@ function normalizePhone(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   const digits = raw.replace(/\D/g, '');
   if (digits.length < 7 || digits.length > 15) return undefined;
-  return digits.startsWith('0') ? digits : digits; // return as-is; real E.164 needs country code context
+  return digits;
+}
+
+function cellValue(cell: ExcelJS.Cell): string {
+  const v = cell.value;
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object' && 'richText' in v) {
+    return (v as ExcelJS.CellRichTextValue).richText.map((r) => r.text).join('');
+  }
+  if (typeof v === 'object' && 'result' in v) {
+    return String((v as ExcelJS.CellFormulaValue).result ?? '');
+  }
+  return String(v);
 }
 
 @Injectable()
@@ -60,31 +73,47 @@ export class ContactImportService {
    * Parse a CSV or Excel file buffer into contact rows.
    * Accepts .csv, .xlsx, .xls
    */
-  parseContacts(buffer: Buffer, mimeType: string): ParsedContact[] {
-    let workbook: XLSX.WorkBook;
+  async parseContacts(buffer: Buffer, mimeType: string): Promise<ParsedContact[]> {
+    const workbook = new ExcelJS.Workbook();
 
     try {
-      workbook = XLSX.read(buffer, { type: 'buffer' });
+      const isCsv =
+        mimeType === 'text/csv' ||
+        mimeType === 'application/csv' ||
+        mimeType === 'text/plain';
+
+      if (isCsv) {
+        await workbook.csv.read(Readable.from(buffer));
+      } else {
+        // exceljs ships its own (older) Buffer typing that predates the
+        // generic Buffer<TArrayBuffer> introduced in newer @types/node,
+        // so TS sees a structural mismatch even though this is a real
+        // Buffer at runtime.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await workbook.xlsx.load(buffer as any);
+      }
     } catch {
       throw new BadRequestException(
         'Could not parse file. Ensure it is a valid CSV or Excel file.',
       );
     }
 
-    const sheetName = workbook.SheetNames[0];
-    if (!sheetName) throw new BadRequestException('File contains no sheets.');
+    const worksheet = workbook.worksheets[0];
+    if (!worksheet) {
+      throw new BadRequestException('File contains no sheets.');
+    }
 
-    const sheet = workbook.Sheets[sheetName];
-    const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, {
-      defval: '',
+    // Extract header row
+    const headerRow = worksheet.getRow(1);
+    const headers: string[] = [];
+    headerRow.eachCell((cell) => {
+      headers.push(cellValue(cell));
     });
 
-    if (rows.length === 0)
+    if (headers.length === 0) {
       throw new BadRequestException('File is empty or has no data rows.');
-    if (rows.length > 5000)
-      throw new BadRequestException('Import limited to 5,000 rows per file.');
+    }
 
-    const headers = Object.keys(rows[0]);
     const nameCol = findColumn(headers, NAME_ALIASES);
     const phoneCol = findColumn(headers, PHONE_ALIASES);
     const emailCol = findColumn(headers, EMAIL_ALIASES);
@@ -98,38 +127,47 @@ export class ContactImportService {
       );
     }
 
-    return rows
-      .map((row, i) => {
-        const rawName = String(row[nameCol] ?? '').trim();
-        if (!rawName) return null; // skip blank rows
+    const rows: ParsedContact[] = [];
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // skip header
 
-        const rawPhone = phoneCol
-          ? String(row[phoneCol] ?? '').trim()
-          : undefined;
-        const rawEmail = emailCol
-          ? String(row[emailCol] ?? '')
-              .trim()
-              .toLowerCase()
-          : undefined;
-        const rawTags = tagsCol ? String(row[tagsCol] ?? '') : '';
-        const rawNotes = notesCol
-          ? String(row[notesCol] ?? '').trim()
-          : undefined;
+      const getField = (colName: string | undefined) => {
+        if (!colName) return '';
+        const colIndex = headers.indexOf(colName);
+        if (colIndex < 0) return '';
+        return cellValue(row.getCell(colIndex + 1)).trim(); // ExcelJS cells are 1-indexed
+      };
 
-        const tags = rawTags
-          .split(/[,;|]/)
-          .map((t: string) => t.trim().toLowerCase())
-          .filter(Boolean);
+      const rawName = getField(nameCol);
+      if (!rawName) return; // skip blank rows
 
-        return {
-          name: rawName,
-          phone: normalizePhone(rawPhone),
-          email: rawEmail || undefined,
-          tags,
-          notes: rawNotes || undefined,
-        } as ParsedContact;
-      })
-      .filter((c): c is ParsedContact => c !== null);
+      const rawTags = getField(tagsCol ?? undefined);
+      const tags = rawTags
+        .split(/[,;|]/)
+        .map((t: string) => t.trim().toLowerCase())
+        .filter(Boolean);
+
+      const rawEmail = getField(emailCol ?? undefined).toLowerCase();
+      const rawPhone = getField(phoneCol ?? undefined);
+      const rawNotes = getField(notesCol ?? undefined);
+
+      rows.push({
+        name: rawName,
+        phone: normalizePhone(rawPhone),
+        email: rawEmail || undefined,
+        tags,
+        notes: rawNotes || undefined,
+      });
+    });
+
+    if (rows.length === 0) {
+      throw new BadRequestException('File is empty or has no data rows.');
+    }
+    if (rows.length > 5000) {
+      throw new BadRequestException('Import limited to 5,000 rows per file.');
+    }
+
+    return rows;
   }
 
   validatePhoneNumbers(contacts: ParsedContact[]): {
@@ -142,7 +180,6 @@ export class ContactImportService {
     for (const c of contacts) {
       if (c.phone && c.phone.replace(/\D/g, '').length < 7) {
         invalid.push(`"${c.name}" — phone "${c.phone}" is too short`);
-        // still include contact, just clear the bad phone
         valid.push({ ...c, phone: undefined });
       } else {
         valid.push(c);
@@ -209,7 +246,7 @@ export class ContactImportService {
     buffer: Buffer,
     mimeType: string,
   ): Promise<ImportResult> {
-    const parsed = this.parseContacts(buffer, mimeType);
+    const parsed = await this.parseContacts(buffer, mimeType);
     const { valid, invalid } = this.validatePhoneNumbers(parsed);
     const result = await this.bulkInsertContacts(tenantId, valid);
     if (invalid.length > 0) {
