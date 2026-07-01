@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/Toast';
 import Link from 'next/link';
 
@@ -53,7 +52,6 @@ interface Campaign { id: string; name: string; segments: { id: string; name: str
 type TargetType = 'contact' | 'tag' | 'group' | 'segment';
 
 export default function AppointmentsPage() {
-    const router = useRouter();
     const toast = useToast();
     const [apts, setApts] = useState<Appointment[]>([]);
     const [locations, setLocations] = useState<LocationSlim[]>([]);
@@ -76,10 +74,6 @@ export default function AppointmentsPage() {
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const isMobile = useIsMobile();
-
-    useEffect(() => {
-        router.replace('/dashboard/events');
-    }, [router]);
 
     const fetchApts = useCallback(async () => {
         if (process.env.NODE_ENV !== 'production') console.debug('[AppointmentsPage] fetchApts');

@@ -19,7 +19,11 @@ export class TenantController {
   @Patch('settings')
   updateSettings(
     @CurrentUser('tenantId') tenantId: string,
-    @Body('settings') settings: Record<string, unknown>,
+    // Callers PATCH a flat partial-settings object (e.g. { onboardingCompleted: true }),
+    // which the service deep-merges into the settings JSON. Reading @Body('settings')
+    // here would look for a nested `settings` key that no caller sends, silently
+    // discarding the update while still returning 200.
+    @Body() settings: Record<string, unknown>,
   ) {
     return this.tenantService.updateSettings(tenantId, settings);
   }

@@ -46,8 +46,14 @@ export function useOnboarding(enabled: boolean): UseOnboardingReturn {
 
     const markComplete = useCallback(async () => {
         setShowOnboarding(false);
-        // Fire-and-forget — don't await so the UI closes instantly
-        api.patch('/tenants/settings', { onboardingCompleted: true }).catch(() => { });
+        // Optimistically close the modal so the UI feels instant, but surface any
+        // persistence failure instead of swallowing it — a silent failure here is
+        // what makes the modal reappear on the next visit.
+        try {
+            await api.patch('/tenants/settings', { onboardingCompleted: true });
+        } catch (err) {
+            console.error('[Onboarding] Failed to persist onboardingCompleted:', err);
+        }
     }, []);
 
     return {

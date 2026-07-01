@@ -13,49 +13,38 @@ import Icon from '@/components/ui/Icon';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import OnboardingModal from '@/components/onboarding/OnboardingModal';
 import {
-    faChartLine, faCalendar, faUser, faBell, faCog, faEnvelope, faStar, faUsers, faRobot,
-    faBolt, faMapPin, faFileAlt, faSquare, faGift, faBullhorn, faCreditCard, faChartPie, faEye,
-    faExclamationTriangle, faClock, faCheckCircle, faTimesCircle, faLock, faBars, faXmark,
-    faTag, faCalendarDays, faPaperPlane, faLayerGroup
+    faHouse, faCalendarDays, faUsers, faBolt, faCalendar, faCommentDots, faCog,
+    faCreditCard, faCheckCircle, faTimesCircle, faLock, faBars, faXmark,
+    faExclamationTriangle, faClock, faChartLine
 } from '@fortawesome/free-solid-svg-icons';
 import UserMenu from '@/components/navigation/UserMenu';
 
-// ── CORE ─────────────────────────────────────────────────────
-const NAV_CORE = [
-    { href: '/dashboard', icon: faChartLine, label: 'Dashboard' },
-    { href: '/dashboard/events', icon: faCalendar, label: 'Events' },
+// ── PRIMARY NAV (6 items) ─────────────────────────────────────
+const NAV_PRIMARY = [
+    { href: '/dashboard',              icon: faHouse,        label: 'Home' },
+    { href: '/dashboard/contacts',     icon: faUsers,        label: 'Contacts' },
+    { href: '/dashboard/appointments', icon: faCalendarDays, label: 'Appointments' },
+    { href: '/dashboard/automations',  icon: faBolt,         label: 'Follow-ups' },
+    { href: '/dashboard/events',       icon: faCalendar,     label: 'Events' },
+    { href: '/dashboard/campaigns',    icon: faCommentDots,  label: 'Campaigns' },
 ];
 
-// ── AUDIENCE ─────────────────────────────────────────────────
-const NAV_AUDIENCE = [
-    { href: '/dashboard/contacts', icon: faUsers, label: 'Contacts' },
-    { href: '/dashboard/tags', icon: faTag, label: 'Tags' },
-];
-
-// ── MESSAGING ────────────────────────────────────────────────
-const NAV_MESSAGING = [
-    { href: '/dashboard/campaigns', icon: faBullhorn, label: 'Campaigns' },
-    { href: '/dashboard/messaging', icon: faPaperPlane, label: 'Broadcast' },
-    { href: '/dashboard/templates', icon: faFileAlt, label: 'Templates' },
-];
-
-// ── AUTOMATION ───────────────────────────────────────────────
-const NAV_AUTOMATION = [
-    { href: '/dashboard/automations', icon: faBolt, label: 'Automation' },
-    { href: '/dashboard/reminders', icon: faBell, label: 'Reminders' },
-    { href: '/dashboard/ai', icon: faRobot, label: 'AI Assistant' },
-];
-
-// ── INSIGHTS ─────────────────────────────────────────────────
-const NAV_INSIGHTS = [
-    { href: '/dashboard/analytics', icon: faChartPie, label: 'Analytics' },
-];
-
-// ── SETTINGS ─────────────────────────────────────────────────
+// ── SETTINGS (bottom) ────────────────────────────────────────
 const NAV_SETTINGS = [
-    { href: '/dashboard/locations', icon: faMapPin, label: 'Locations' },
-    { href: '/dashboard/billing', icon: faCreditCard, label: 'Billing' },
     { href: '/dashboard/settings', icon: faCog, label: 'Settings' },
+];
+
+// kept for pageTitle lookup — not rendered directly
+const NAV_HIDDEN = [
+    { href: '/dashboard/reminders',  icon: faBolt,        label: 'Follow-ups' },
+    { href: '/dashboard/messaging',  icon: faCommentDots, label: 'Messages' },
+    { href: '/dashboard/campaigns',  icon: faCommentDots, label: 'Campaigns' },
+    { href: '/dashboard/templates',  icon: faCommentDots, label: 'Messages' },
+    { href: '/dashboard/analytics',  icon: faChartLine,   label: 'Analytics' },
+    { href: '/dashboard/tags',       icon: faUsers,       label: 'Contacts' },
+    { href: '/dashboard/billing',    icon: faCreditCard,  label: 'Settings' },
+    { href: '/dashboard/locations',  icon: faCog,         label: 'Settings' },
+    { href: '/dashboard/ai',         icon: faBolt,        label: 'Follow-ups' },
 ];
 
 function StatusBadge({
@@ -155,8 +144,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         return () => mql.removeEventListener('change', handler);
     }, []);
 
-    const ONBOARDING_NAV_HIGHLIGHT = new Set(['/dashboard/events', '/dashboard/messaging', '/dashboard/automations']);
-    const ALL_NAV = [...NAV_CORE, ...NAV_AUDIENCE, ...NAV_MESSAGING, ...NAV_AUTOMATION, ...NAV_INSIGHTS, ...NAV_SETTINGS];
+    const ONBOARDING_NAV_HIGHLIGHT = new Set(['/dashboard/events', '/dashboard/campaigns', '/dashboard/automations']);
+    const ALL_NAV = [...NAV_PRIMARY, ...NAV_SETTINGS, ...NAV_HIDDEN];
     const pageTitle = ALL_NAV.find(item => item.href === pathname)?.label ?? 'Dashboard';
 
     const redirecting = useRef(false);
@@ -230,59 +219,75 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                 </div>
 
                 <nav className={styles.nav}>
-                    {[
-                        { label: 'CORE', items: NAV_CORE },
-                        { label: 'AUDIENCE', items: NAV_AUDIENCE },
-                        { label: 'MESSAGING', items: NAV_MESSAGING },
-                        { label: 'AUTOMATION', items: NAV_AUTOMATION },
-                        { label: 'INSIGHTS', items: NAV_INSIGHTS },
-                        { label: 'SETTINGS', items: NAV_SETTINGS },
-                    ].map((section, idx) => (
-                        <div key={section.label} className={styles.navSection}>
-                            <span className={styles.navSectionLabel}>
-                                {section.label}
-                            </span>
-                            {section.items.map((item: { href: string; icon: IconProp; label: string }) => {
-                                const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-                                const highlightOnboarding = showOnboarding && ONBOARDING_NAV_HIGHLIGHT.has(item.href);
+                    {/* Primary nav items */}
+                    <div className={styles.navSection}>
+                        {NAV_PRIMARY.map((item) => {
+                            const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                            const highlightOnboarding = showOnboarding && ONBOARDING_NAV_HIGHLIGHT.has(item.href);
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    onClick={() => setSidebarOpen(false)}
+                                    className={`${styles.navItem} ${highlightOnboarding ? styles.onboardingHighlight : ''}`}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 10,
+                                        padding: '8px 12px',
+                                        borderRadius: 'var(--radius-md)',
+                                        fontSize: 14,
+                                        fontWeight: isActive ? 500 : 400,
+                                        color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                        background: isActive ? 'var(--bg-secondary)' : 'transparent',
+                                        borderLeft: isActive ? '2px solid var(--primary)' : '2px solid transparent',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    <span style={{ width: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isActive ? 1 : 0.6 }}>
+                                        <Icon icon={item.icon} />
+                                    </span>
+                                    {item.label}
+                                </Link>
+                            );
+                        })}
+                    </div>
 
-                                return (
-                                    <Link
-                                        key={item.href}
-                                        href={item.href}
-                                        onClick={() => setSidebarOpen(false)}
-                                        className={`${styles.navItem} ${highlightOnboarding ? styles.onboardingHighlight : ''}`}
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 10,
-                                            padding: '8px 12px',
-                                            borderRadius: 'var(--radius-md)',
-                                            fontSize: 14,
-                                            fontWeight: isActive ? 500 : 400,
-                                            color: isActive 
-                                                ? 'var(--text-primary)' 
-                                                : 'var(--text-secondary)',
-                                            background: isActive 
-                                                ? 'var(--bg-secondary)' 
-                                                : 'transparent',
-                                            borderLeft: isActive 
-                                                ? '2px solid var(--primary)' 
-                                                : '2px solid transparent',
-                                            textDecoration: 'none',
-                                            transition: 'all 0.15s',
-                                        }}
-                                    >
-                                        <span style={{ width: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isActive ? 1 : 0.6 }}>
-                                            <Icon icon={item.icon} className="w-5 h-5" />
-                                        </span>
-                                        {item.label}
-                                    </Link>
-                                );
-                            })}
-                            {idx < 5 && <div className={styles.navSectionDivider} />}
-                        </div>
-                    ))}
+                    {/* Settings at bottom */}
+                    <div className={styles.navSection} style={{ marginTop: 'auto' }}>
+                        <div className={styles.navSectionDivider} />
+                        {NAV_SETTINGS.map((item) => {
+                            const isActive = pathname.startsWith(item.href);
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    onClick={() => setSidebarOpen(false)}
+                                    className={styles.navItem}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 10,
+                                        padding: '8px 12px',
+                                        borderRadius: 'var(--radius-md)',
+                                        fontSize: 14,
+                                        fontWeight: isActive ? 500 : 400,
+                                        color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                        background: isActive ? 'var(--bg-secondary)' : 'transparent',
+                                        borderLeft: isActive ? '2px solid var(--primary)' : '2px solid transparent',
+                                        textDecoration: 'none',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    <span style={{ width: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isActive ? 1 : 0.6 }}>
+                                        <Icon icon={item.icon} />
+                                    </span>
+                                    {item.label}
+                                </Link>
+                            );
+                        })}
+                    </div>
                 </nav>
 
                 {/* Usage Bars */}
