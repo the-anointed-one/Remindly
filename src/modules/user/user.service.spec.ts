@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { UserService } from './user.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EmailProvider } from '../email/email.provider';
 import { NotFoundException } from '@nestjs/common';
 
 describe('UserService', () => {
@@ -20,6 +22,16 @@ describe('UserService', () => {
             },
           },
         },
+        // getMe touches neither of these, but UserService takes them as
+        // constructor deps (ConfigService for FRONTEND_URL in the invite flow).
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn((_key: string, fallback?: unknown) => fallback) },
+        },
+        {
+          provide: EmailProvider,
+          useValue: { send: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -29,20 +41,32 @@ describe('UserService', () => {
 
   describe('getMe', () => {
     it('should return user and use select to exclude sensitive fields', async () => {
-      const mockUser = {
+      const dbUser = {
         id: 'user-uuid-1',
         tenantId: 'tenant-uuid-1',
         email: 'test@example.com',
         firstName: 'Test',
         lastName: 'User',
         role: 'OWNER',
+        tenant: { settings: { timezone: 'Africa/Lagos' } },
       };
 
-      prisma.user.findUnique.mockResolvedValue(mockUser);
+      prisma.user.findUnique.mockResolvedValue(dbUser);
 
       const result = await service.getMe('user-uuid-1');
 
-      expect(result).toEqual(mockUser);
+      // getMe strips the joined tenant row and flattens its timezone onto the
+      // response as tenantTimezone.
+      expect(result).toEqual({
+        id: 'user-uuid-1',
+        tenantId: 'tenant-uuid-1',
+        email: 'test@example.com',
+        firstName: 'Test',
+        lastName: 'User',
+        role: 'OWNER',
+        tenantTimezone: 'Africa/Lagos',
+      });
+      expect(result).not.toHaveProperty('tenant');
       expect(result).not.toHaveProperty('passwordHash');
       expect(result).not.toHaveProperty('refreshToken');
 
@@ -65,6 +89,22 @@ describe('UserService', () => {
       const callArgs = prisma.user.findUnique.mock.calls[0][0];
       expect(callArgs.select).not.toHaveProperty('passwordHash');
       expect(callArgs.select).not.toHaveProperty('refreshToken');
+    });
+
+    it('should fall back to UTC when the tenant has no timezone set', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-uuid-1',
+        tenantId: 'tenant-uuid-1',
+        email: 'test@example.com',
+        firstName: 'Test',
+        lastName: 'User',
+        role: 'OWNER',
+        tenant: { settings: {} },
+      });
+
+      const result = await service.getMe('user-uuid-1');
+
+      expect(result).toHaveProperty('tenantTimezone', 'UTC');
     });
 
     it('should throw NotFoundException when user does not exist', async () => {
