@@ -91,7 +91,7 @@ export default function EventDetailPage() {
     const { id } = useParams<{ id: string }>();
     const router = useRouter();
     const [event, setEvent] = useState<EventDetail | null>(null);
-    const [stats, setStats] = useState<{ total: number; confirmed: number; cancelled: number; pending: number; invited: number } | null>(null);
+    const [stats, setStats] = useState<{ total: number; confirmed: number; cancelled: number; pending: number; invited: number; arrived?: number } | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [statusChanging, setStatusChanging] = useState(false);
@@ -296,6 +296,24 @@ export default function EventDetailPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Link
+                        href={`/dashboard/events/${id}/scanner`}
+                        title="Scan attendee QR codes to check them in at the venue."
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '10px 20px',
+                            borderRadius: 8,
+                            background: 'var(--primary)',
+                            color: '#fff',
+                            textDecoration: 'none',
+                            fontSize: 14,
+                            fontWeight: 500,
+                        }}
+                    >
+                        📷 Open Check-In Scanner
+                    </Link>
                     <select
                         value={event.status}
                         disabled={statusChanging}
@@ -319,9 +337,10 @@ export default function EventDetailPage() {
 
             {/* Attendance stats */}
             {stats && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
                     <StatCard label="INVITED" value={stats.total} color="var(--text-primary)" />
                     <StatCard label="CONFIRMED" value={stats.confirmed} color="#22c55e" />
+                    <StatCard label="ARRIVED" value={stats.arrived ?? 0} color="#0F6E56" />
                     <StatCard label="PENDING" value={stats.pending} color="#f59e0b" />
                     <StatCard label="CANCELLED" value={stats.cancelled} color="#ef4444" />
                 </div>

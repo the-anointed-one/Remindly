@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import Icon from '@/components/ui/Icon';
 import EmptyState from '@/components/EmptyState';
 import { faLocationDot, faMapPin, faPhone, faClock, faCalendar, faMapLocationDot } from '@fortawesome/free-solid-svg-icons';
+import { TIMEZONES } from '@/lib/timezones';
 
 interface Location {
     id: string;
@@ -17,13 +18,6 @@ interface Location {
     createdAt: string;
     _count?: { appointments: number };
 }
-
-const TIMEZONES = [
-    'UTC', 'Africa/Lagos', 'Africa/Nairobi', 'Africa/Johannesburg', 'Africa/Cairo',
-    'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-    'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Dubai', 'Asia/Kolkata',
-    'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney',
-];
 
 const EMPTY_FORM = { name: '', address: '', timezone: 'UTC', phone: '', isActive: true };
 

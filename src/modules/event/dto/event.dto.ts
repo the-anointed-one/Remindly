@@ -6,6 +6,7 @@ import {
   IsArray,
   IsUUID,
   IsObject,
+  IsIn,
 } from 'class-validator';
 import { EventType } from '@prisma/client';
 
@@ -55,6 +56,19 @@ export class CreateEventDto {
     sendLocationOnConfirm?: boolean;
     sendFollowupAfter?: boolean;
   };
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['none', 'discount', 'cashback'])
+  incentiveType?: string;
+
+  @IsString()
+  @IsOptional()
+  incentiveValue?: string;
+
+  @IsString()
+  @IsOptional()
+  incentiveMessage?: string;
 }
 
 export class UpdateEventDto {
@@ -98,6 +112,19 @@ export class UpdateEventDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['none', 'discount', 'cashback'])
+  incentiveType?: string;
+
+  @IsString()
+  @IsOptional()
+  incentiveValue?: string;
+
+  @IsString()
+  @IsOptional()
+  incentiveMessage?: string;
 }
 
 export class InviteContactsDto {

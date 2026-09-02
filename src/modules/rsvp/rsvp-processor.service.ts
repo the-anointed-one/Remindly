@@ -28,6 +28,41 @@ export class RsvpProcessorService {
   ) {}
 
   /**
+   * Does this sender actually have an event invitation an RSVP could apply to?
+   *
+   * `isRsvpKeyword()` only inspects the words in the message, and its keyword
+   * set (yes/y/1/no/n/2/3/maybe/confirm/cancel/…) overlaps almost entirely with
+   * the appointment reply vocabulary. Routing on the keyword alone therefore
+   * captured *every* appointment reply into the RSVP queue, where it matched no
+   * invitation and silently died — the appointment was never confirmed or
+   * cancelled. Callers must gate on this before treating a reply as an RSVP, so
+   * that senders with no pending invitation fall through to appointment handling.
+   *
+   * Mirrors the contact + invitation lookup in `processInboundMessage()`; keep
+   * the two in sync.
+   */
+  async hasActiveInvitation(phone: string, tenantId: string): Promise<boolean> {
+    const contact = await this.prisma.contact.findFirst({
+      where: { tenantId, phone, unsubscribed: false },
+      select: { id: true },
+    });
+    if (!contact) return false;
+
+    const count = await this.prisma.eventParticipant.count({
+      where: {
+        contactId: contact.id,
+        status: { in: ['invited', 'pending'] },
+        event: {
+          tenantId,
+          startTime: { gte: new Date() },
+          status: { in: ['DRAFT', 'PUBLISHED', 'ACTIVE'] },
+        },
+      },
+    });
+    return count > 0;
+  }
+
+  /**
    * Process an inbound message and auto-update RSVP if applicable.
    *
    * @param phone - Sender's phone number (E.164 format)

@@ -524,7 +524,7 @@ function EmptyHome() {
                 <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24, maxWidth: 360, margin: '0 auto 24px' }}>
                     Create your first appointment and Meetora will automatically send follow-up messages to prevent no-shows.
                 </p>
-                <Link href="/dashboard/appointments" className="btn btn-primary" style={{ fontWeight: 700 }}>
+                <Link href="/dashboard/appointments?new=1" className="btn btn-primary" style={{ fontWeight: 700 }}>
                     <Icon icon={faPlus} style={{ marginRight: 8 }} /> Create appointment
                 </Link>
             </div>

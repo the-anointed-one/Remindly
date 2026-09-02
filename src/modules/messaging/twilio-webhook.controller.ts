@@ -27,6 +27,7 @@ import {
 import { ReputationService } from '../reputation/reputation.service';
 import { RsvpProcessorService } from '../rsvp/rsvp-processor.service';
 import { RsvpQueueService } from '../rsvp/rsvp-queue.service';
+import { EventLifecycleService } from '../appointment/event-lifecycle.service';
 
 /**
  * Twilio webhook controller.
@@ -57,6 +58,8 @@ export class TwilioWebhookController {
     private readonly rsvpProcessor: RsvpProcessorService,
     @Inject(forwardRef(() => ReputationService))
     private readonly reputationService: ReputationService,
+    @Inject(forwardRef(() => EventLifecycleService))
+    private readonly eventLifecycle: EventLifecycleService,
   ) {}
 
   // ── SMS Status Callback ────────────────────
@@ -357,8 +360,18 @@ export class TwilioWebhookController {
     }
 
     // ── Step 0.75: Event RSVP — queue for asynchronous processing ─
-    // This is new in event-centric workflow
-    if (this.rsvpProcessor.isRsvpKeyword(body)) {
+    // Gate on an actual pending invitation, not just the keyword. The RSVP
+    // keyword set (yes/y/1/no/n/2/3/maybe/confirm/cancel/…) is a superset of the
+    // appointment reply vocabulary below, so matching on the keyword alone
+    // swallowed every appointment confirm/cancel/reschedule reply into the RSVP
+    // queue — where it matched no invitation and vanished, leaving the
+    // appointment untouched while the customer was told their response "has
+    // been received and is being processed". Senders with no live invitation now
+    // fall through to the appointment steps.
+    if (
+      this.rsvpProcessor.isRsvpKeyword(body) &&
+      (await this.rsvpProcessor.hasActiveInvitation(phone, tenantId))
+    ) {
       await this.rsvpQueueService.enqueueRsvp({
         tenantId,
         phone,
@@ -400,6 +413,28 @@ export class TwilioWebhookController {
     if (['3', 'NO', 'CANCEL', 'N'].includes(body)) {
       await this.processCancellation(phone);
       return 'Your appointment has been cancelled. Contact us to book a new time.';
+    }
+
+    // ── Step 4.5: Maybe / unsure ───────────────────────────────────────────
+    // The RSVP footer (appendRsvpFooter) explicitly invites "MAYBE if unsure"
+    // on every event-related reminder, but until now nothing here recognised
+    // it — it fell through to the generic "unknown reply" message below,
+    // which contradicts the instructions the customer was just given. There's
+    // no dedicated "tentative" status on Appointment/Participant, so this
+    // doesn't change appointment status; it just acknowledges the reply and
+    // logs it so staff can see the customer is uncertain and can follow up.
+    if (['MAYBE', 'M', 'MAYBE?'].includes(body)) {
+      const customer = await this.prisma.customer.findFirst({ where: { phone } });
+      if (customer) {
+        await this.auditService.log({
+          tenantId: customer.tenantId,
+          action: 'UPDATE',
+          entity: 'Customer',
+          entityId: customer.id,
+          newValues: { rsvpReply: 'MAYBE', via: 'reply' },
+        });
+      }
+      return "Thanks for letting us know — we've noted you're unsure. Reply 1 to confirm or 3 to cancel whenever you're ready, or call us if you'd like to talk it through.";
     }
 
     // ── Step 5: Unknown ────────────────────────────────────────────────────
@@ -487,6 +522,13 @@ export class TwilioWebhookController {
         newValues: { status: 'CONFIRMED', via: 'reply' },
       });
 
+      await this.fireStatusLifecycle(
+        customer,
+        appointment,
+        appointment.status,
+        'CONFIRMED',
+      );
+
       this.logger.log(`Appointment ${appointment.id} confirmed via reply`);
     }
   }
@@ -520,7 +562,65 @@ export class TwilioWebhookController {
         newValues: { status: 'CANCELLED', via: 'reply' },
       });
 
+      await this.fireStatusLifecycle(
+        customer,
+        appointment,
+        appointment.status,
+        'CANCELLED',
+      );
+
       this.logger.log(`Appointment ${appointment.id} cancelled via reply`);
+    }
+  }
+
+  /**
+   * Run the shared appointment-status lifecycle for a status change that came
+   * from an inbound reply (SMS / WhatsApp / voice IVR).
+   *
+   * Why this exists: replies update the appointment with a direct
+   * `prisma.appointment.update()` rather than going through
+   * `AppointmentService.update()`, so until now they skipped
+   * `EventLifecycleService.onStatusChanged()` entirely. That meant a customer
+   * texting "YES" silently changed the status but fired no
+   * `appointment_confirmed` / `appointment_cancelled` automation trigger and
+   * logged no contact activity — the same change made in the dashboard did
+   * both. Any follow-up automation the tenant built on those triggers simply
+   * never ran for reply-driven changes, which is the more common path.
+   *
+   * Failures are logged and swallowed: the customer's reply has already been
+   * persisted and acknowledged, so a downstream automation problem must not
+   * turn into a webhook error (Twilio would retry and double-process).
+   */
+  private async fireStatusLifecycle(
+    customer: { id: string; tenantId: string; firstName: string | null; lastName: string | null; phone: string | null; email: string | null },
+    appointment: { id: string; title: string; scheduledAt: Date },
+    oldStatus: string,
+    newStatus: string,
+  ) {
+    try {
+      await this.eventLifecycle.onStatusChanged(
+        customer.tenantId,
+        appointment.id,
+        oldStatus,
+        newStatus,
+        {
+          appointmentId: appointment.id,
+          appointmentTitle: appointment.title,
+          appointmentStatus: newStatus,
+          scheduledAt: appointment.scheduledAt.toISOString(),
+          customerId: customer.id,
+          customerName:
+            [customer.firstName, customer.lastName].filter(Boolean).join(' ') ||
+            undefined,
+          customerPhone: customer.phone ?? undefined,
+          customerEmail: customer.email ?? undefined,
+          tenantId: customer.tenantId,
+        },
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `Lifecycle hook failed for appointment ${appointment.id} (${oldStatus} → ${newStatus}): ${err.message}`,
+      );
     }
   }
 

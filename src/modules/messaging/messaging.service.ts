@@ -6,6 +6,9 @@ import { ConfigService } from '@nestjs/config';
 import { AuditService } from '../audit/audit.service';
 import { ActivityType } from '@prisma/client';
 import { EmailProvider } from '../email/email.provider';
+import { normalizePhoneForSend } from '../../common/utils/normalize-phone.util';
+import { TermiiProvider } from './termii.provider';
+import { isAfricanNumber, getRegion } from './region.helper';
 
 @Injectable()
 export class MessagingService {
@@ -19,6 +22,7 @@ export class MessagingService {
     private readonly mockSendService: MockSendService,
     private readonly auditService: AuditService,
     private readonly emailProvider: EmailProvider,
+    private readonly termiiProvider: TermiiProvider,
   ) {
     this.useTwilio = !!this.configService.get('TWILIO_ACCOUNT_SID');
   }
@@ -36,10 +40,51 @@ export class MessagingService {
     appointmentData?: { title: string; customerName: string; time: string },
     eventId?: string,
     contactId?: string,
+    // Callers that write their own MessageLog row (the reminder worker) pass
+    // true. providerMessageId is UNIQUE, so a second row for the same send
+    // fails the insert outright — this is not merely a cosmetic duplicate.
+    suppressLog = false,
   ) {
     let providerMessageId: string | undefined;
     let success = false;
     let error: string | undefined;
+
+    // ── Normalize phone recipients to E.164 ─────
+    // Twilio rejects non-E.164 numbers; existing rows may hold loose local
+    // formats. Normalize here so campaign/manual sends work on legacy data, and
+    // fail loudly (INVALID_PHONE_FORMAT) rather than shipping garbage.
+    if (channel === 'SMS' || channel === 'VOICE' || channel === 'WHATSAPP') {
+      const normalized = normalizePhoneForSend(to);
+      if (!normalized) {
+        this.logger.warn(
+          `Invalid phone format for ${channel} send (tenant ${tenantId}): "${to}"`,
+        );
+        if (reminderId) {
+          await this.prisma.failedReminder
+            .upsert({
+              where: { reminderId },
+              create: {
+                tenantId,
+                reminderId,
+                errorCode: 'INVALID_PHONE_FORMAT',
+                errorMessage: `Invalid phone number format: "${to}" — could not normalize to E.164`,
+              },
+              update: {
+                errorCode: 'INVALID_PHONE_FORMAT',
+                errorMessage: `Invalid phone number format: "${to}" — could not normalize to E.164`,
+                lastRetryAt: new Date(),
+              },
+            })
+            .catch(() => {});
+        }
+        return {
+          success: false,
+          error: `Invalid phone number format: "${to}"`,
+          errorCode: 'INVALID_PHONE_FORMAT',
+        };
+      }
+      to = normalized;
+    }
 
     // ── Tenant sender identity ──────────────────
     const tenantSettings = await this.prisma.tenant
@@ -49,7 +94,33 @@ export class MessagingService {
     const senderEmail = (tenantSettings.senderEmail as string) || undefined;
     const senderName  = (tenantSettings.senderName  as string) || undefined;
 
-    if (channel === 'SMS') {
+    // ── Provider routing ────────────────────────
+    // Termii is the primary carrier for African numbers (better deliverability
+    // and pricing on those routes); everything else stays on Twilio. `to` is
+    // already E.164 here, so the prefix test is reliable.
+    const useTermii =
+      this.termiiProvider.isConfigured() &&
+      (channel === 'SMS' || channel === 'WHATSAPP' || channel === 'VOICE') &&
+      isAfricanNumber(to);
+
+    if (useTermii) {
+      this.logger.log(
+        `Routing ${channel} to ${to} (${getRegion(to)}) via Termii`,
+      );
+
+      let result: { success: boolean; messageId?: string; error?: string };
+      if (channel === 'SMS') {
+        result = await this.termiiProvider.sendSms(to, content);
+      } else if (channel === 'WHATSAPP') {
+        result = await this.termiiProvider.sendWhatsApp(to, content);
+      } else {
+        result = await this.termiiProvider.sendVoice(to, content);
+      }
+
+      success = result.success;
+      providerMessageId = result.messageId;
+      error = result.error;
+    } else if (channel === 'SMS') {
       if (this.useTwilio) {
         const result = await this.twilioProvider.sendSms(to, content, senderPhone);
         success = result.success;
@@ -113,21 +184,23 @@ export class MessagingService {
 
     // Log the message
     if (success) {
-      await this.prisma.messageLog.create({
-        data: {
-          tenantId,
-          reminderId,
-          eventId,
-          contactId,
-          channel,
-          direction: 'OUTBOUND',
-          recipient: to,
-          content,
-          providerMessageId,
-          providerStatus: 'sent',
-          sentAt: new Date(),
-        },
-      });
+      if (!suppressLog) {
+        await this.prisma.messageLog.create({
+          data: {
+            tenantId,
+            reminderId,
+            eventId,
+            contactId,
+            channel,
+            direction: 'OUTBOUND',
+            recipient: to,
+            content,
+            providerMessageId,
+            providerStatus: 'sent',
+            sentAt: new Date(),
+          },
+        });
+      }
 
       // Log message_sent activity for quick-send (not for reminder/campaign paths which log their own types)
       if (!reminderId) {

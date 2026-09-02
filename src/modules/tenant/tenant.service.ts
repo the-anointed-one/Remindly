@@ -58,4 +58,20 @@ export class TenantService {
     this.logger.log(`Sender identity updated for tenant ${tenantId}`);
     return this.getSenderIdentity(tenantId);
   }
+
+  // ── Business Timezone ──────────────────────
+  // Stored in settings.timezone (same JSON blob as sender identity), defaulting
+  // to UTC when unset. Drives timezone-aware "today"/calendar date boundaries.
+
+  async getTimezone(tenantId: string) {
+    const settings = await this.getSettings(tenantId);
+    const tz = settings.timezone;
+    return { timezone: typeof tz === 'string' && tz.trim() ? tz : 'UTC' };
+  }
+
+  async updateTimezone(tenantId: string, timezone: string) {
+    await this.updateSettings(tenantId, { timezone: timezone.trim() });
+    this.logger.log(`Timezone updated to ${timezone} for tenant ${tenantId}`);
+    return this.getTimezone(tenantId);
+  }
 }

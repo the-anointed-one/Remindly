@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
 import Icon from '@/components/ui/Icon';
+import DateTimePicker from '@/components/ui/DateTimePicker';
 import {
     faCalendar, faUsers, faBell, faEdit, faTrash,
     faClock, faMapMarkerAlt, faChevronRight,
@@ -153,7 +154,10 @@ export default function AppointmentDetailPage() {
                 const data = aptRes.value.data;
                 setApt(data);
                 setEditTitle(data.title);
-                setEditScheduledAt(new Date(data.scheduledAt).toISOString().slice(0, 16));
+                // DateTimePicker's datetime value is a full UTC ISO instant; it
+                // interprets/displays it in the business timezone itself, so
+                // don't truncate to a bare wall-clock string here.
+                setEditScheduledAt(new Date(data.scheduledAt).toISOString());
                 setEditDuration(data.durationMinutes);
                 setEditNotes(data.notes ?? '');
             } else {
@@ -306,8 +310,7 @@ export default function AppointmentDetailPage() {
                         </div>
                         <div className="input-group">
                             <label className="input-label">Date & Time</label>
-                            <input className="input" type="datetime-local" value={editScheduledAt} onChange={(e) => setEditScheduledAt(e.target.value)} 
-                                title="The scheduled date and time." />
+                            <DateTimePicker value={editScheduledAt} onChange={(v) => setEditScheduledAt(v)} />
                         </div>
                         <div className="input-group">
                             <label className="input-label">Duration (min)</label>

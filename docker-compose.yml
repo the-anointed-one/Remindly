@@ -63,11 +63,16 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      SENTRY_DSN: ${SENTRY_DSN:-}
       DATABASE_URL: postgresql://remindly:${DB_PASSWORD:-REDACTED_SECRET}@postgres:5432/remindly
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      TERMII_API_KEY: ${TERMII_API_KEY}
+      TERMII_SENDER_ID: ${TERMII_SENDER_ID:-Meetora}
+      TERMII_BASE_URL: ${TERMII_BASE_URL:-https://v3.api.termii.com}
+      TERMII_WEBHOOK_SECRET: ${TERMII_WEBHOOK_SECRET}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
       TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
@@ -135,6 +140,9 @@ services:
       DATABASE_URL: postgresql://remindly:${DB_PASSWORD:-REDACTED_SECRET}@postgres:5432/remindly
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      TERMII_API_KEY: ${TERMII_API_KEY}
+      TERMII_SENDER_ID: ${TERMII_SENDER_ID:-Meetora}
+      TERMII_BASE_URL: ${TERMII_BASE_URL:-https://v3.api.termii.com}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
       TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
@@ -145,6 +153,7 @@ services:
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
       API_BASE_URL: ${API_BASE_URL}
+      SENTRY_DSN: ${SENTRY_DSN:-}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
       WORKER_COUNT: ${WORKER_COUNT:-2}
     depends_on:
@@ -153,10 +162,15 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep node | grep reminder.worker.js || exit 1"]
+      # Deep check: hits the worker's internal HTTP health endpoint, which
+      # verifies Redis connectivity and that jobs are still being processed
+      # (not just that the node process exists). wget exits non-zero on the
+      # 503 the endpoint returns when unhealthy.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 20s
 
   # ── Campaign Worker ────────────────────────────
   # For local dev scaling: docker compose up --scale campaign-worker=2
@@ -178,6 +192,9 @@ services:
       DATABASE_URL: postgresql://remindly:${DB_PASSWORD:-REDACTED_SECRET}@postgres:5432/remindly
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      TERMII_API_KEY: ${TERMII_API_KEY}
+      TERMII_SENDER_ID: ${TERMII_SENDER_ID:-Meetora}
+      TERMII_BASE_URL: ${TERMII_BASE_URL:-https://v3.api.termii.com}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
       TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
@@ -190,6 +207,7 @@ services:
       API_BASE_URL: ${API_BASE_URL}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      SENTRY_DSN: ${SENTRY_DSN:-}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
       WORKER_COUNT: ${WORKER_COUNT:-2}
     depends_on:
@@ -198,10 +216,14 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "ps aux | grep node | grep campaign.worker.js || exit 1"]
+      # Deep check: hits the worker's internal HTTP health endpoint (Redis
+      # connectivity + job-processing progress), not just `ps aux`. wget exits
+      # non-zero on the 503 the endpoint returns when unhealthy.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 20s
 
   # ── Frontend ───────────────────────────────────
   frontend:

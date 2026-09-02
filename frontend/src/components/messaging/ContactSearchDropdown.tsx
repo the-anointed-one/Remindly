@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import Icon from '@/components/ui/Icon';
+import PhoneInput, { isValidPhoneNumber } from '@/components/ui/PhoneInput';
 import { faSearch, faUser, faPhone, faEnvelope, faPlus } from '@fortawesome/free-solid-svg-icons';
 
 export interface ContactSlim {
@@ -130,6 +131,10 @@ export default function ContactSearchDropdown({ value, onChange, multi = false, 
             setCreateError('Name is required');
             return;
         }
+        if (createPhone && !isValidPhoneNumber(createPhone)) {
+            setCreateError('Please select a country and enter a valid phone number.');
+            return;
+        }
         setCreateSubmitting(true);
         setCreateError('');
         try {
@@ -248,11 +253,9 @@ export default function ContactSearchDropdown({ value, onChange, multi = false, 
                                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreate(); } }}
                                         placeholder="Name (required)"
                                     />
-                                    <input
-                                        className="input"
+                                    <PhoneInput
                                         value={createPhone}
-                                        onChange={(e) => setCreatePhone(e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreate(); } }}
+                                        onChange={setCreatePhone}
                                         placeholder="Phone (SMS / WhatsApp / Voice)"
                                     />
                                     <input

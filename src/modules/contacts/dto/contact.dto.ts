@@ -8,6 +8,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { IsValidPhoneNumber } from '../../../common/validators/is-valid-phone.validator';
 
 export class CreateContactDto {
   @IsString()
@@ -18,6 +19,7 @@ export class CreateContactDto {
   @IsOptional()
   @IsString()
   @MaxLength(30)
+  @IsValidPhoneNumber()
   phone?: string;
 
   @IsOptional()
@@ -50,6 +52,7 @@ export class UpdateContactDto {
   @IsOptional()
   @IsString()
   @MaxLength(30)
+  @IsValidPhoneNumber()
   phone?: string;
 
   @IsOptional()

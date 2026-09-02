@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { useToast } from '@/components/Toast';
 
 import SearchableSelect from '@/components/ui/SearchableSelect';
+import DateTimePicker from '@/components/ui/DateTimePicker';
 import EmptyState from '@/components/EmptyState';
 import Icon from '@/components/ui/Icon';
 import {
@@ -26,6 +27,9 @@ interface EventItem {
     isDemoData: boolean;
     _count: { participants: number; responses: number };
     sourceType: 'event' | 'appointment';
+    incentiveType: string;
+    incentiveValue: string | null;
+    incentiveMessage: string | null;
 }
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -107,6 +111,9 @@ export default function EventsPage() {
             sendLocationConfirmed: false,
             sendFollowUp: false,
         },
+        incentiveType: 'none',
+        incentiveValue: '',
+        incentiveMessage: '',
     });
     const [saving, setSaving] = useState(false);
 
@@ -192,6 +199,9 @@ export default function EventsPage() {
                 responses: appt._count?.responses ?? 0,
             },
             sourceType,
+            incentiveType: appt.incentiveType || 'none',
+            incentiveValue: appt.incentiveValue ?? null,
+            incentiveMessage: appt.incentiveMessage ?? null,
         } as EventItem;
     });
 
@@ -239,6 +249,9 @@ export default function EventsPage() {
                 sendLocationConfirmed: false,
                 sendFollowUp: false,
             },
+            incentiveType: event.incentiveType || 'none',
+            incentiveValue: event.incentiveValue || '',
+            incentiveMessage: event.incentiveMessage || '',
         });
         setShowForm(true);
     };
@@ -294,6 +307,9 @@ export default function EventsPage() {
             endTime: form.endTime ? new Date(form.endTime).toISOString() : null,
             location: form.location || undefined,
             eventType: form.eventType,
+            incentiveType: form.incentiveType,
+            incentiveValue: form.incentiveValue || null,
+            incentiveMessage: form.incentiveMessage || null,
         };
 
         const sanitizePayload = (payload: Record<string, unknown>) => {
@@ -322,6 +338,9 @@ export default function EventsPage() {
                     sendLocationConfirmed: false,
                     sendFollowUp: false,
                 },
+                incentiveType: 'none',
+                incentiveValue: '',
+                incentiveMessage: '',
             });
 
             fetchEvents();
@@ -400,11 +419,11 @@ export default function EventsPage() {
                             </div>
                             <div className="input-group">
                                 <label className="input-label">Start Time *</label>
-                                <input className="input" type="datetime-local" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} required />
+                                <DateTimePicker value={form.startTime} onChange={v => setForm(f => ({ ...f, startTime: v }))} required />
                             </div>
                             <div className="input-group">
                                 <label className="input-label">End Time</label>
-                                <input className="input" type="datetime-local" value={form.endTime} onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))} />
+                                <DateTimePicker value={form.endTime} onChange={v => setForm(f => ({ ...f, endTime: v }))} />
                             </div>
                             <div className="input-group" style={{ gridColumn: '1 / -1' }}>
                                 <label className="input-label">Description</label>
@@ -461,6 +480,80 @@ export default function EventsPage() {
                                     <span>Send follow-up after event</span>
                                 </label>
                             </div>
+                        </div>
+
+                        {/* Incentive section */}
+                        <div style={{ marginTop: 24, marginBottom: 14 }}>
+                            <label style={{
+                                fontSize: 13, fontWeight: 600,
+                                color: 'var(--text-primary)',
+                                display: 'block', marginBottom: 8,
+                            }}>
+                                Attendee Incentive
+                            </label>
+
+                            <select
+                                value={form.incentiveType}
+                                onChange={e => setForm(f => ({ ...f, incentiveType: e.target.value }))}
+                                title="Choose what reward confirmed attendees receive"
+                                style={{
+                                    width: '100%', padding: '9px 12px',
+                                    borderRadius: 8, marginBottom: 12,
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--text-primary)', fontSize: 14,
+                                }}
+                            >
+                                <option value="none">No incentive</option>
+                                <option value="discount">Discount code</option>
+                                <option value="cashback">Cashback reward</option>
+                            </select>
+
+                            {form.incentiveType !== 'none' && (
+                                <>
+                                    <input
+                                        type="text"
+                                        value={form.incentiveValue}
+                                        onChange={e => setForm(f => ({ ...f, incentiveValue: e.target.value }))}
+                                        placeholder={
+                                            form.incentiveType === 'discount'
+                                                ? 'eg 20% off or ₦500 discount'
+                                                : 'eg ₦1,000 cashback'
+                                        }
+                                        title="The value of the reward"
+                                        style={{
+                                            width: '100%', padding: '9px 12px',
+                                            borderRadius: 8, marginBottom: 12,
+                                            background: 'var(--bg-secondary)',
+                                            border: '1px solid var(--border)',
+                                            color: 'var(--text-primary)', fontSize: 14,
+                                        }}
+                                    />
+                                    <textarea
+                                        value={form.incentiveMessage}
+                                        onChange={e => setForm(f => ({ ...f, incentiveMessage: e.target.value }))}
+                                        placeholder={
+                                            'Custom message (optional). Use {{name}}, ' +
+                                            '{{code}}, {{value}} as placeholders'
+                                        }
+                                        title="Custom incentive message — leave blank for default"
+                                        rows={2}
+                                        style={{
+                                            width: '100%', padding: '9px 12px',
+                                            borderRadius: 8, marginBottom: 8,
+                                            background: 'var(--bg-secondary)',
+                                            border: '1px solid var(--border)',
+                                            color: 'var(--text-primary)', fontSize: 14,
+                                            resize: 'vertical',
+                                        }}
+                                    />
+                                    <p style={{
+                                        fontSize: 12, color: 'var(--text-muted)',
+                                    }}>
+                                        {'Default: "Hi {{name}}! You earned a {{value}} reward. Code: {{code}}"'}
+                                    </p>
+                                </>
+                            )}
                         </div>
 
                         <div style={{ display: 'flex', gap: 10 }}>

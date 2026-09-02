@@ -1,6 +1,5 @@
 import { Worker, Queue, Job } from 'bullmq';
 import { PrismaClient, ChannelType, ActivityType } from '@prisma/client';
-import * as twilio from 'twilio';
 import { Logger } from '@nestjs/common';
 import {
   getRedisConnection,
@@ -26,10 +25,18 @@ const connection = getRedisConnection();
 
 import { ConfigService } from '@nestjs/config';
 import { TwilioProvider } from '../modules/messaging/twilio.provider';
+import { TermiiProvider } from '../modules/messaging/termii.provider';
 import { MockSendService } from '../modules/messaging/mock-send.service';
 import { AuditService } from '../modules/audit/audit.service';
 import { MessagingService } from '../modules/messaging/messaging.service';
 import { appendRsvpFooter } from '../common/utils/rsvp-footer.util';
+import { normalizePhoneForSend } from '../common/utils/normalize-phone.util';
+import { PLAN_LIMITS } from '../modules/plan/plan-limits';
+import { startWorkerHealthServer } from './worker-health';
+import { initSentry, captureException } from '../common/sentry';
+
+// Error tracking — no-op unless SENTRY_DSN is set.
+initSentry('reminder-worker');
 
 const configService = new ConfigService();
 const auditService = new AuditService(prisma as any);
@@ -40,146 +47,126 @@ const messagingService = new MessagingService(
   new MockSendService(),
   auditService,
   new EmailProvider(configService),
+  new TermiiProvider(configService),
 );
-
-const useTwilio = !!(
-  process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
-);
-const twilioClient = useTwilio
-  ? twilio.default(
-    process.env.TWILIO_ACCOUNT_SID,
-    process.env.TWILIO_AUTH_TOKEN,
-  )
-  : null;
 
 const dlq = new Queue<ReminderJobData>(REMINDER_DLQ, { connection });
 const unreadCheckQueue = new Queue<UnreadCheckJobData>(UNREAD_CHECK_QUEUE, {
   connection,
 });
+// Queue handle for the reminder queue itself — used only by the health endpoint
+// (Redis PING + waiting-job count).
+const reminderQueue = new Queue<ReminderJobData>(REMINDER_QUEUE, { connection });
+
+// Updated whenever a job completes or fails; the health endpoint flags the
+// worker unhealthy if this goes stale while jobs are still waiting in the queue.
+let lastJobProcessedAt = Date.now();
 
 logger.log(
-  `🔧 Starting Meetora reminder worker (Twilio: ${useTwilio ? 'ENABLED' : 'DISABLED'})...`,
+  '🔧 Starting Meetora reminder worker (provider routing via MessagingService)...',
 );
 
 // ── Send Logic ──────────────────────────────
-
-async function sendViaTwilio(
-  channel: string,
-  to: string,
-  content: string,
-  job: Job<ReminderJobData>,
-): Promise<{ success: boolean; providerMessageId?: string; error?: string }> {
-  if (!twilioClient) return { success: false, error: 'Twilio not configured' };
-
-  try {
-    if (channel === 'SMS') {
-      const webhookUrl = process.env.TWILIO_WEBHOOK_URL;
-      const useWebhook = webhookUrl && !webhookUrl.includes('localhost');
-
-      const message = await twilioClient.messages.create({
-        to,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        body: content,
-        ...(useWebhook ? { statusCallback: `${webhookUrl}/status` } : {}),
-      });
-      return { success: true, providerMessageId: message.sid };
-    } else if (channel === 'WHATSAPP') {
-      const message = await twilioClient.messages.create({
-        to: `whatsapp:${to}`,
-        from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-        body: content,
-      });
-      return { success: true, providerMessageId: message.sid };
-    } else if (channel === 'VOICE') {
-      const appointment = await prisma.appointment.findFirst({
-        where: { id: job.data.appointmentId, tenantId: job.data.tenantId },
-        include: { customer: true },
-      });
-
-      if (!appointment || !appointment.customer?.phone) {
-        logger.warn(
-          `Voice skipped — no phone for appointmentId ${job.data.appointmentId}`,
-        );
-        return {
-          success: false,
-          error: 'No phone number available for voice call',
-        };
-      }
-
-      const gatherCallbackUrl = `${process.env.API_BASE_URL}/twilio-webhook/voice-gather`;
-
-      return await messagingService.send(
-        job.data.tenantId,
-        'VOICE',
-        appointment.customer.phone,
-        job.data.messageContent ?? '',
-        job.data.reminderId,
-        {
-          title: appointment.title,
-          customerName: appointment.customer.firstName ?? 'there',
-          time: appointment.scheduledAt.toISOString(),
-        },
-        undefined,
-        appointment.customerId ?? undefined,
-      );
-    }
-    return { success: false, error: `Unsupported channel: ${channel}` };
-  } catch (error: any) {
-    logger.error(`Twilio ${channel} error: ${error.message}`);
-    return { success: false, error: error.message };
-  }
-}
 
 async function performSend(
   channel: string,
   to: string,
   content: string,
   job: Job<ReminderJobData>,
-): Promise<{ success: boolean; providerMessageId?: string; error?: string }> {
-  if (
-    useTwilio &&
-    (channel === 'SMS' || channel === 'WHATSAPP' || channel === 'VOICE')
-  ) {
-    return sendViaTwilio(channel, to, content, job);
+): Promise<{
+  success: boolean;
+  providerMessageId?: string;
+  error?: string;
+  errorCode?: string;
+}> {
+  // Normalize phone recipients to E.164 at send time so existing rows with
+  // loose local formats (e.g. Nigerian "08137999425") are routable: carriers
+  // reject non-E.164 numbers, and the Termii/Twilio split below keys off the
+  // dialing prefix. Fail loudly if unparseable.
+  if (channel === 'SMS' || channel === 'WHATSAPP' || channel === 'VOICE') {
+    const normalized = normalizePhoneForSend(to);
+    if (!normalized) {
+      logger.warn(
+        `📵 Invalid phone format for reminder ${job.data.reminderId} (${channel}): "${to}"`,
+      );
+      return {
+        success: false,
+        error: `Invalid phone number format: "${to}" — could not normalize to E.164`,
+        errorCode: 'INVALID_PHONE_FORMAT',
+      };
+    }
+    to = normalized;
   }
 
+  if (
+    channel !== 'SMS' &&
+    channel !== 'WHATSAPP' &&
+    channel !== 'VOICE' &&
+    channel !== 'EMAIL'
+  ) {
+    logger.warn(
+      `Unhandled channel: ${channel} for reminder ${job.data.reminderId}`,
+    );
+    return { success: false, error: `Unhandled channel: ${channel}` };
+  }
+
+  // Every channel goes through MessagingService — it owns provider selection
+  // (African numbers → Termii, everything else → Twilio, EMAIL → Resend,
+  // VOICE → Twilio TwiML). Never call a provider directly from this worker;
+  // doing so silently bypasses the Termii route for African recipients.
+
+  // VOICE needs appointmentData to build the TwiML script, and EMAIL needs the
+  // customer's address; SMS/WHATSAPP need neither, so skip the extra query.
+  const appointment =
+    channel === 'VOICE' || channel === 'EMAIL'
+      ? await prisma.appointment.findFirst({
+        where: { id: job.data.appointmentId, tenantId: job.data.tenantId },
+        include: { customer: true },
+      })
+      : null;
+
+  const appointmentData = appointment
+    ? {
+      title: appointment.title,
+      customerName: appointment.customer?.firstName ?? 'there',
+      time: appointment.scheduledAt.toISOString(),
+    }
+    : undefined;
+
   if (channel === 'EMAIL') {
-    const appointment = await prisma.appointment.findFirst({
-      where: { id: job.data.appointmentId, tenantId: job.data.tenantId },
-      include: { customer: true },
-    });
-
     const recipientEmail = appointment?.customer?.email ?? to;
-
     if (!recipientEmail) {
       logger.warn(
         `Email skipped — no email address for appointmentId ${job.data.appointmentId}`,
       );
       return { success: false, error: 'No email address available' };
     }
-
-    return messagingService.send(
-      job.data.tenantId,
-      'EMAIL',
-      recipientEmail,
-      job.data.messageContent ?? '',
-      job.data.reminderId,
-      appointment
-        ? {
-          title: appointment.title,
-          customerName: appointment.customer?.firstName ?? 'there',
-          time: appointment.scheduledAt.toISOString(),
-        }
-        : undefined,
-      undefined,
-      appointment?.customerId ?? undefined,
-    );
+    to = recipientEmail;
   }
 
-  logger.warn(
-    `Unhandled channel: ${channel} for reminder ${job.data.reminderId}`,
+  // Without appointmentData MessagingService falls through to the mock sender
+  // for VOICE, which would look like a success but place no call.
+  if (channel === 'VOICE' && !appointmentData) {
+    logger.warn(
+      `Voice skipped — no appointment found for appointmentId ${job.data.appointmentId}`,
+    );
+    return { success: false, error: 'No appointment found for voice reminder' };
+  }
+
+  // suppressLog: every performSend call site writes its own MessageLog row and
+  // uses the returned id downstream (scheduleUnreadCheck). providerMessageId is
+  // UNIQUE, so letting MessagingService log too makes the worker's insert throw.
+  return messagingService.send(
+    job.data.tenantId,
+    channel,
+    to,
+    content,
+    job.data.reminderId,
+    appointmentData,
+    undefined,
+    appointment?.customerId ?? undefined,
+    true,
   );
-  return { success: false, error: `Unhandled channel: ${channel}` };
 }
 
 // ── Plan validation ──────────────────────────
@@ -231,6 +218,20 @@ async function validatePlanEligibility(
         allowed: false,
         reason: 'Voice requires SMS_VOICE or SMS_VOICE_AI plan',
       };
+    }
+
+    // Monthly SMS cap for active subscriptions. There is no per-tenant column
+    // for this (unlike whatsapp/ai monthly limits), so the cap comes from
+    // PLAN_LIMITS keyed by the tenant's plan. A missing/zero limit is treated
+    // as "don't block" so a config gap never blocks a paying customer.
+    if (channel === 'SMS') {
+      const smsMonthlyLimit = PLAN_LIMITS[tenant.planType]?.smsMonthlyLimit ?? 0;
+      if (smsMonthlyLimit > 0 && tenant.smsUsageCount >= smsMonthlyLimit) {
+        return {
+          allowed: false,
+          reason: `Monthly SMS limit reached (${smsMonthlyLimit})`,
+        };
+      }
     }
   }
 
@@ -493,6 +494,33 @@ const worker = new Worker<ReminderJobData>(
       return;
     }
 
+    // ── Plan / usage eligibility gate ──────────
+    // The guard existed but was never wired in. Enforce trial status,
+    // subscription status, and per-channel plan/usage access at *actual send
+    // time* so a lapsed, unsubscribed, or over-limit tenant can't rack up
+    // Twilio charges. A block here is a policy decision, not a transient send
+    // error: mark the reminder CANCELLED (not FAILED), record a distinct reason
+    // where it's visible (the contact Reminders tab surfaces FailedReminder),
+    // and return early WITHOUT throwing so BullMQ doesn't retry.
+    const eligibility = await validatePlanEligibility(tenantId, channel);
+    if (!eligibility.allowed) {
+      logger.warn(
+        `🚫 Reminder ${reminderId} blocked by plan/usage policy (${channel}): ${eligibility.reason}`,
+      );
+      await prisma.reminder.update({
+        where: { id: reminderId },
+        data: { status: 'CANCELLED' },
+      });
+      await logFailedReminder(
+        tenantId,
+        reminderId,
+        'PLAN_NOT_ELIGIBLE',
+        eligibility.reason ?? 'Blocked by plan or usage policy',
+        attemptNum,
+      ).catch(() => {});
+      return;
+    }
+
     const recipients: {
       id: string;
       phone: string | null;
@@ -512,9 +540,30 @@ const worker = new Worker<ReminderJobData>(
         recipients.push({ id: c.id, phone: c.phone, email: c.email });
       }
     } else if (reminder.event?.participants) {
+      // Reminder.contactId names the single participant this row is for — the
+      // scheduler already writes one reminder per participant. Ignoring it and
+      // looping over every participant meant each of N reminders sent to all N
+      // contacts (N² messages per rule), and it would have made a per-contact
+      // send_location broadcast the venue to the whole invite list. Fall back to
+      // the old fan-out only for rows that name no contact.
+      const targets = reminder.contactId
+        ? reminder.event.participants.filter(
+            (p) => p.contactId === reminder.contactId,
+          )
+        : reminder.event.participants;
+
+      // "Remind non-responders" governs chasing people who haven't replied, so
+      // it must only gate recipients who are actually still non-responders —
+      // otherwise it cancels confirm-time messages (e.g. send_location) for any
+      // tenant that turned the flag off.
+      const chasingNonResponders = targets.some(
+        (p) => p.status !== 'confirmed' && p.status !== 'cancelled',
+      );
+
       if (
         automationSettings &&
-        !(automationSettings as any).remindNonResponders
+        !(automationSettings as any).remindNonResponders &&
+        chasingNonResponders
       ) {
         logger.log(
           `🚫 Reminders for non-responders disabled for event ${reminder.eventId} — skipping`,
@@ -526,7 +575,7 @@ const worker = new Worker<ReminderJobData>(
         return;
       }
 
-      for (const p of reminder.event.participants) {
+      for (const p of targets) {
         if (p.status !== 'cancelled' && p.contact && !p.contact.unsubscribed) {
           recipients.push({
             id: p.contact.id,
@@ -550,6 +599,7 @@ const worker = new Worker<ReminderJobData>(
 
     let someSuccess = false;
     let lastError = '';
+    let lastErrorCode = 'SEND_FAILED';
 
     for (const recipientObj of recipients) {
       const recipientStr = recipientObj.phone || recipientObj.email;
@@ -570,6 +620,7 @@ const worker = new Worker<ReminderJobData>(
       if (!result.success) {
         logger.log(`❌ Send failed to ${recipientStr}: ${result.error}`);
         lastError = result.error || 'Unknown error';
+        lastErrorCode = result.errorCode || 'SEND_FAILED';
         continue;
       }
 
@@ -635,7 +686,7 @@ const worker = new Worker<ReminderJobData>(
       await logFailedReminder(
         tenantId,
         reminderId,
-        'SEND_FAILED',
+        lastErrorCode,
         lastError || 'All attempts failed',
         attemptNum,
       );
@@ -761,12 +812,16 @@ const unreadCheckWorker = new Worker<UnreadCheckJobData>(
 // ── Event handlers ───────────────────────────
 
 worker.on('completed', (job: Job<ReminderJobData>) => {
+  lastJobProcessedAt = Date.now();
   logger.log(`✓ Job ${job.id} completed`);
 });
 
 worker.on(
   'failed',
   async (job: Job<ReminderJobData> | undefined, err: Error) => {
+    // A failed attempt still means the worker is processing (making progress),
+    // so it counts toward liveness even though the send didn't succeed.
+    lastJobProcessedAt = Date.now();
     if (!job) return;
 
     const attemptsMade = job.attemptsMade;
@@ -810,20 +865,58 @@ unreadCheckWorker.on(
   },
 );
 
+// ── Health endpoint ──────────────────────────
+// Internal-only HTTP liveness probe for docker-compose's healthcheck (deeper
+// than the old `ps aux | grep`). Not published via docker-compose ports.
+const healthServer = startWorkerHealthServer({
+  name: 'reminder-worker',
+  port: Number(process.env.WORKER_HEALTH_PORT) || 3001,
+  queue: reminderQueue,
+  getLastProcessedAt: () => lastJobProcessedAt,
+  maxIdleMs: Number(process.env.WORKER_HEALTH_MAX_IDLE_MS) || undefined,
+  logger,
+});
+
 // ── Graceful shutdown ────────────────────────
 
 async function shutdown() {
   logger.log('\n🛑 Shutting down worker...');
+  healthServer.close();
   await worker.close();
   await unreadCheckWorker.close();
   await dlq.close();
   await unreadCheckQueue.close();
+  await reminderQueue.close();
   await prisma.$disconnect();
   process.exit(0);
 }
 
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
+// ── Process-level safety net ─────────────────
+// BullMQ catches errors thrown/rejected inside the job processor itself and
+// routes them through the normal 'failed' → retry → DLQ path above. But an
+// unhandled rejection or sync throw ANYWHERE else in this process (a stray
+// un-awaited promise, a bug in an event handler, a library issue) is not
+// caught by BullMQ at all — by default Node kills the whole process for
+// those. Docker's `restart: unless-stopped` brings it back, but that's a
+// silent crash-and-recover cycle with no record of why, and every
+// currently-processing job gets abandoned mid-flight until BullMQ's
+// stalled-job recovery picks it back up on the next start. Log it loudly
+// instead of dying silently, so a real bug here is visible and diagnosable
+// rather than showing up only as "reminders were late for a minute."
+process.on('unhandledRejection', (reason: unknown) => {
+  logger.error(
+    `🚨 Unhandled promise rejection in reminder worker: ${reason instanceof Error ? reason.stack : String(reason)}`,
+  );
+  captureException(reason);
+});
+
+process.on('uncaughtException', (err: Error) => {
+  logger.error(`🚨 Uncaught exception in reminder worker: ${err.stack}`);
+  captureException(err);
+});
 
 logger.log('✅ Reminder worker started — listening for jobs');
 logger.log(`   Queue:        ${REMINDER_QUEUE}`);

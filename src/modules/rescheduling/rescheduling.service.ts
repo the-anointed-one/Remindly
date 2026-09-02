@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChannelType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReminderSchedulerService } from '../reminder/reminder-scheduler.service';
 import { TwilioProvider } from '../messaging/twilio.provider';
 import { MockSendService } from '../messaging/mock-send.service';
+import { EventLifecycleService } from '../appointment/event-lifecycle.service';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,8 @@ export class ReschedulingService {
     private readonly reminderScheduler: ReminderSchedulerService,
     private readonly twilioProvider: TwilioProvider,
     private readonly mockSendService: MockSendService,
+    @Inject(forwardRef(() => EventLifecycleService))
+    private readonly eventLifecycle: EventLifecycleService,
   ) {
     this.useTwilio = !!this.config.get('TWILIO_ACCOUNT_SID');
   }
@@ -269,6 +272,11 @@ export class ReschedulingService {
     newTime: Date,
     tenantId: string,
   ): Promise<void> {
+    const existing = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      include: { customer: true },
+    });
+
     await this.prisma.appointment.update({
       where: { id: appointmentId },
       data: {
@@ -280,6 +288,42 @@ export class ReschedulingService {
     this.logger.log(
       `Appointment ${appointmentId} time updated to ${newTime.toISOString()}`,
     );
+
+    // Fire the same lifecycle hook AppointmentService.update() fires, so a
+    // reschedule driven by an SMS slot-selection reply runs any
+    // `appointment_rescheduled` automation the tenant has built. Without this
+    // the reply changed the time silently and no follow-up message ever went
+    // out — only dashboard-initiated reschedules triggered automations.
+    // Swallowed on failure: the new time is already committed and the customer
+    // has been told, so an automation error must not fail the reply handler.
+    if (existing) {
+      try {
+        await this.eventLifecycle.onRescheduled(
+          tenantId,
+          appointmentId,
+          existing.scheduledAt,
+          newTime,
+          {
+            appointmentId,
+            appointmentTitle: existing.title,
+            scheduledAt: newTime.toISOString(),
+            customerId: existing.customerId ?? undefined,
+            customerName: existing.customer
+              ? [existing.customer.firstName, existing.customer.lastName]
+                  .filter(Boolean)
+                  .join(' ')
+              : undefined,
+            customerPhone: existing.customer?.phone ?? undefined,
+            customerEmail: existing.customer?.email ?? undefined,
+            tenantId,
+          },
+        );
+      } catch (err: any) {
+        this.logger.error(
+          `Lifecycle hook failed for rescheduled appointment ${appointmentId}: ${err.message}`,
+        );
+      }
+    }
   }
 
   // ── rescheduleReminderJobs ────────────────────────────────────────────────

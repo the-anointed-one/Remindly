@@ -47,6 +47,16 @@ export const envValidationSchema = Joi.object({
   REDIS_PORT: Joi.number().required().default(6379),
   REDIS_PASSWORD: Joi.string().allow('').default(''),
 
+  // Termii (primary for African numbers, Twilio stays the fallback)
+  TERMII_API_KEY: Joi.string().optional().allow('').default(''),
+  TERMII_SENDER_ID: Joi.string().optional().allow('').default('Meetora'),
+  TERMII_BASE_URL: Joi.string()
+    .optional()
+    .allow('')
+    .default('https://v3.api.termii.com'),
+  // Empty disables the inbound-webhook secret check.
+  TERMII_WEBHOOK_SECRET: Joi.string().optional().allow('').default(''),
+
   // Twilio
   TWILIO_ACCOUNT_SID: Joi.string().required().allow('').default(''),
   TWILIO_AUTH_TOKEN: Joi.string().required().allow('').default(''),

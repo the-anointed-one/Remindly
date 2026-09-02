@@ -128,6 +128,22 @@ export class ContactsController {
     return this.contactsService.getActivity(tenantId, id);
   }
 
+  @Get(':id/reminders')
+  getReminders(
+    @CurrentUser('tenantId') tenantId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.contactsService.getReminders(tenantId, id);
+  }
+
+  @Get(':id/messages')
+  getMessages(
+    @CurrentUser('tenantId') tenantId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.contactsService.getMessages(tenantId, id);
+  }
+
   @Get(':id/groups')
   getContactGroups(
     @CurrentUser('tenantId') tenantId: string,

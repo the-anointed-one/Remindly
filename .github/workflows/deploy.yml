@@ -1,8 +1,12 @@
-name: Deploy
+name: Deploy (legacy VPS)
 
+# Superseded by Railway (API + workers) and Vercel (frontend), which both
+# deploy automatically on push to main. This SSH/docker-compose pipeline is
+# kept for the self-hosted path only and no longer runs on push — it would
+# fail on every commit without DEPLOY_HOST et al. Run it by hand from the
+# Actions tab if you go back to a VPS.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 # Only one deploy runs at a time; new pushes cancel the previous run
 concurrency:

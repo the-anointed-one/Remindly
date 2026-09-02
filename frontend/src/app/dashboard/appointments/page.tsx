@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useToast } from '@/components/Toast';
 import Link from 'next/link';
 
@@ -29,6 +30,7 @@ import {
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
 import ContactSearchDropdown, { ContactSlim } from '@/components/messaging/ContactSearchDropdown';
+import DateTimePicker from '@/components/ui/DateTimePicker';
 import ChannelSelector, { Channel } from '@/components/messaging/ChannelSelector';
 import MessageEditor from '@/components/messaging/MessageEditor';
 
@@ -53,10 +55,22 @@ type TargetType = 'contact' | 'tag' | 'group' | 'segment';
 
 export default function AppointmentsPage() {
     const toast = useToast();
+    const searchParams = useSearchParams();
+    const router = useRouter();
     const [apts, setApts] = useState<Appointment[]>([]);
     const [locations, setLocations] = useState<LocationSlim[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showForm, setShowForm] = useState(false);
+    // Pre-open the form when arriving via a "?new=1" entry point (e.g. the
+    // dashboard home "Create appointment" button). The param is stripped on
+    // mount below so a refresh or Cancel-then-back won't reopen it.
+    const [showForm, setShowForm] = useState(() => searchParams.get('new') === '1');
+
+    useEffect(() => {
+        if (searchParams.get('new') === '1') {
+            router.replace('/dashboard/appointments', { scroll: false });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     const [form, setForm] = useState({
         title: '', scheduledAt: '',
         durationMinutes: 30, notes: '', locationId: '',
@@ -73,6 +87,14 @@ export default function AppointmentsPage() {
     const [allCampaigns, setAllCampaigns] = useState<Campaign[]>([]);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
+    // Inline "create new location" — lets the user add a location without
+    // leaving the appointment form (mirrors the pattern in ContactSearchDropdown).
+    const [creatingLocation, setCreatingLocation] = useState(false);
+    const [newLocationName, setNewLocationName] = useState('');
+    const [newLocationAddress, setNewLocationAddress] = useState('');
+    const [newLocationPhone, setNewLocationPhone] = useState('');
+    const [locationError, setLocationError] = useState('');
+    const [locationSubmitting, setLocationSubmitting] = useState(false);
     const isMobile = useIsMobile();
 
     const fetchApts = useCallback(async () => {
@@ -125,32 +147,79 @@ export default function AppointmentsPage() {
                     template: reminderTemplate,
                 };
             }
-            try {
-                await api.post('/appointments', payload);
-            } catch (_err) {
-                // Safe migration: if /appointments is deprecated, write through /events with appointment mapping.
-                const fallbackPayload = {
-                    title: payload.title,
-                    description: payload.notes,
-                    startTime: payload.scheduledAt,
-                    eventType: 'APPOINTMENT',
-                    // Avoid sending metadata to keep strict server whitelist happy
-                };
-                await api.post('/events', fallbackPayload);
-            }
+            // Always create through /appointments so a real Appointment row is
+            // linked to the Event. Do NOT fall back to a bare POST /events on
+            // failure — that produced an orphaned Event (no Appointment row)
+            // that showed in the list but never in Today's Schedule or the
+            // calendar's appointments half. Let a failure surface to the user
+            // via the catch below instead of masking it with an inconsistent
+            // write path.
+            const { data } = await api.post('/appointments', payload);
             setShowForm(false);
             setForm({ title: '', scheduledAt: '', durationMinutes: 30, notes: '', locationId: '' });
+            setCreatingLocation(false);
+            setNewLocationName('');
+            setNewLocationAddress('');
+            setNewLocationPhone('');
+            setLocationError('');
             setContact(null);
             setTargetId('');
             setEnableReminders(false);
             setReminderTemplate('');
             fetchApts();
+
+            // Bulk (tag/group/segment) responses report per-contact outcomes as
+            // { count, appointments, failures }. Surface partial failures instead
+            // of swallowing them; a single-contact success returns the bare
+            // appointment (no `failures`) and stays silent as before.
+            const failures = (data as { failures?: { contactName: string; error: string }[] })?.failures;
+            if (Array.isArray(failures) && failures.length > 0) {
+                const detail = failures.map((f) => `${f.contactName}: ${f.error}`).join('; ');
+                toast.error(`${data.count} appointment(s) created — ${failures.length} failed: ${detail}`);
+            } else if (typeof (data as { count?: number })?.count === 'number' && data.count > 1) {
+                toast.success(`${data.count} appointments created`);
+            }
         } catch (err: unknown) {
             type ApiError = { response?: { data?: { message?: string } } };
             const apiErr = err as ApiError;
             const message = apiErr?.response?.data?.message || 'Failed to create appointment';
             alert(message);
         } finally { setSaving(false); }
+    };
+
+    // Create a location inline, then auto-select it in the appointment form.
+    const handleCreateLocation = async () => {
+        const name = newLocationName.trim();
+        if (!name) {
+            setLocationError('Name is required');
+            return;
+        }
+        setLocationSubmitting(true);
+        setLocationError('');
+        try {
+            const payload: { name: string; address?: string; phone?: string; timezone: string } = {
+                name,
+                timezone: 'UTC',
+            };
+            if (newLocationAddress.trim()) payload.address = newLocationAddress.trim();
+            if (newLocationPhone.trim()) payload.phone = newLocationPhone.trim();
+            const { data } = await api.post('/locations', payload);
+            const created: LocationSlim = { id: data.id, name: data.name, timezone: data.timezone, phone: data.phone };
+            setLocations((prev) => [...prev, created]);
+            setForm((prev) => ({ ...prev, locationId: created.id }));
+            setCreatingLocation(false);
+            setNewLocationName('');
+            setNewLocationAddress('');
+            setNewLocationPhone('');
+        } catch (err: unknown) {
+            type ApiError = { response?: { data?: { message?: string | string[] } } };
+            const raw = (err as ApiError)?.response?.data?.message;
+            setLocationError(
+                Array.isArray(raw) ? raw.join(', ') : raw || 'Could not create location. Please try again.',
+            );
+        } finally {
+            setLocationSubmitting(false);
+        }
     };
 
     const handleDelete = async () => {
@@ -295,7 +364,15 @@ export default function AppointmentsPage() {
                         </div>
                         <div className="grid-2">
                             <TooltipField label="Date & Time" tooltip="The date and start time of the appointment." className="input-group">
-                                <input className="input" type="datetime-local" value={form.scheduledAt} onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })} required />
+                                {/* When a location is selected, schedule against that
+                                    location's timezone; otherwise the picker falls back
+                                    to the tenant's business timezone. */}
+                                <DateTimePicker
+                                    value={form.scheduledAt}
+                                    onChange={(v) => setForm({ ...form, scheduledAt: v })}
+                                    timezone={locations.find((l) => l.id === form.locationId)?.timezone}
+                                    required
+                                />
                             </TooltipField>
                             <TooltipField label="Duration (min)" tooltip="Length of the appointment in minutes." className="input-group">
                                 <input className="input" type="number" value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) })} min={5} />
@@ -303,12 +380,77 @@ export default function AppointmentsPage() {
                         </div>
                         <div className="grid-2">
                             <TooltipField label="Location (optional)" tooltip="Select the business location for this appointment." className="input-group">
-                                <select className="input" value={form.locationId} onChange={(e) => setForm({ ...form, locationId: e.target.value })}>
+                                <select
+                                    className="input"
+                                    value={form.locationId}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === '__new__') {
+                                            setLocationError('');
+                                            setCreatingLocation(true);
+                                            return;
+                                        }
+                                        setForm({ ...form, locationId: val });
+                                    }}
+                                >
                                     <option value="">— No location —</option>
                                     {locations.map((l) => (
                                         <option key={l.id} value={l.id}>{l.name}</option>
                                     ))}
+                                    <option value="__new__">+ Add new location</option>
                                 </select>
+
+                                {creatingLocation && (
+                                    <div style={{ marginTop: 10, padding: 12, background: 'var(--bg-layer-2)', border: '1px solid var(--border-color)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
+                                            NEW LOCATION
+                                        </div>
+                                        <input
+                                            className="input"
+                                            autoFocus
+                                            value={newLocationName}
+                                            onChange={(e) => setNewLocationName(e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateLocation(); } }}
+                                            placeholder="Name (required)"
+                                        />
+                                        <input
+                                            className="input"
+                                            value={newLocationAddress}
+                                            onChange={(e) => setNewLocationAddress(e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateLocation(); } }}
+                                            placeholder="Address (optional)"
+                                        />
+                                        <input
+                                            className="input"
+                                            value={newLocationPhone}
+                                            onChange={(e) => setNewLocationPhone(e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateLocation(); } }}
+                                            placeholder="Phone (optional)"
+                                        />
+                                        {locationError && (
+                                            <div style={{ color: '#ef4444', fontSize: 12 }}>{locationError}</div>
+                                        )}
+                                        <div style={{ display: 'flex', gap: 8 }}>
+                                            <button
+                                                type="button"
+                                                onClick={handleCreateLocation}
+                                                disabled={locationSubmitting || !newLocationName.trim()}
+                                                className="btn btn-primary"
+                                                style={{ fontSize: 13, flex: 1, opacity: (locationSubmitting || !newLocationName.trim()) ? 0.6 : 1 }}
+                                            >
+                                                {locationSubmitting ? 'Creating…' : 'Create & select'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setCreatingLocation(false); setLocationError(''); }}
+                                                className="btn btn-ghost"
+                                                style={{ fontSize: 13 }}
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </TooltipField>
                             <TooltipField label="Title" tooltip="Brief title for the appointment (e.g. Consultation)." className="input-group">
                                 <input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Dental Checkup" required />

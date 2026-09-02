@@ -29,6 +29,9 @@ interface AuthState {
     trialActive: boolean;
     trialDaysRemaining: number;
     usage: UsageInfo;
+    // Business timezone (tenant settings.timezone, from /users/me), used to
+    // default the DateTimePicker instead of the browser's zone.
+    tenantTimezone: string;
 }
 
 interface AuthContextType extends AuthState {
@@ -59,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         trialActive: false,
         trialDaysRemaining: 0,
         usage: DEFAULT_USAGE,
+        tenantTimezone: 'UTC',
     });
 
     const isMounted = useRef(true);
@@ -92,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     trialActive: billing?.trial?.active ?? false,
                     trialDaysRemaining: billing?.trial?.daysRemaining ?? 0,
                     usage: billing?.usage || s.usage,
+                    tenantTimezone: user?.tenantTimezone || s.tenantTimezone,
                 }));
             }
         } catch {
@@ -131,8 +136,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const register = async (regData: { tenantName: string; email: string; password: string; firstName?: string; lastName?: string }) => {
-        // Backend sets HttpOnly cookies in the response — no token handling in JS
-        await api.post('/auth/register', regData);
+        // Backend sets HttpOnly cookies in the response — no token handling in JS.
+        // Seed the tenant timezone from the browser's zone at signup.
+        let timezone = 'UTC';
+        try { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch {}
+        await api.post('/auth/register', { ...regData, timezone });
         fetchProfile().catch((err) => {
             if (process.env.NODE_ENV === 'development') console.error('[Auth] Post-registration profile fetch failed:', err);
         });

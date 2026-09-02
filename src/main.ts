@@ -43,6 +43,36 @@ import {
   CAMPAIGN_QUEUE,
   getRedisConnection,
 } from './queue/queue.config';
+import { initSentry, captureException } from './common/sentry';
+
+// ── Error tracking ───────────────────────────
+// Initialize before bootstrap() (and before the safety-net handlers below can
+// fire). No-op unless SENTRY_DSN is set, so local dev is unaffected.
+initSentry('api');
+
+// ── Process-level safety net ─────────────────
+// NestJS's own exception filters already catch errors thrown inside a
+// request/controller and turn them into proper HTTP error responses — those
+// never crash the process. This is for everything outside that cycle:
+// background cron/interval code, fire-and-forget calls missing a .catch(),
+// or a bug in a library. Node kills the whole process by default for an
+// unhandled rejection or uncaught exception; that means every in-flight
+// request drops and the API is briefly down until Docker restarts it, with
+// no record of why. Log it loudly instead — this is the customer-facing
+// API, a silent crash here is the most disruptive place it could happen.
+const processLogger = new Logger('ProcessSafetyNet');
+
+process.on('unhandledRejection', (reason: unknown) => {
+  processLogger.error(
+    `🚨 Unhandled promise rejection in API process: ${reason instanceof Error ? reason.stack : String(reason)}`,
+  );
+  captureException(reason);
+});
+
+process.on('uncaughtException', (err: Error) => {
+  processLogger.error(`🚨 Uncaught exception in API process: ${err.stack}`);
+  captureException(err);
+});
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');

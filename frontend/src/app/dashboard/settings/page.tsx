@@ -10,6 +10,7 @@ import Icon from '@/components/ui/Icon';
 import { HelpTip } from '@/components/ui/Tooltip';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCalendar, faChevronUp, faChevronDown, faXmark, faCheck, faArrowRight } from '@fortawesome/free-solid-svg-icons';
+import { TIMEZONES } from '@/lib/timezones';
 
 interface Location {
     locationId: string;
@@ -75,6 +76,11 @@ export default function SettingsPage() {
     const [senderSaving, setSenderSaving] = useState(false);
     const [senderSaved, setSenderSaved] = useState(false);
 
+    // Business timezone
+    const [timezone, setTimezone] = useState('UTC');
+    const [timezoneSaving, setTimezoneSaving] = useState(false);
+    const [timezoneSaved, setTimezoneSaved] = useState(false);
+
     // Team management
     interface TeamMember { id: string; email: string; firstName: string | null; lastName: string | null; role: 'OWNER' | 'ADMIN' | 'STAFF'; createdAt: string; }
     const [members, setMembers] = useState<TeamMember[]>([]);
@@ -114,6 +120,7 @@ export default function SettingsPage() {
                 if (data.failoverEnabled !== undefined) setFailoverEnabled(!!data.failoverEnabled);
                 if (Array.isArray(data.failoverChain)) setFailoverChain(data.failoverChain);
                 if (data.failoverUnreadWindowMinutes) setFailoverWindow(Number(data.failoverUnreadWindowMinutes));
+                if (typeof data.timezone === 'string' && data.timezone) setTimezone(data.timezone);
             })
             .catch(() => { /* use defaults */ });
 
@@ -849,6 +856,52 @@ export default function SettingsPage() {
                             {senderSaving ? 'Saving…' : 'Save Sender Identity'}
                         </button>
                         {senderSaved && <span style={{ color: 'var(--success)', fontSize: 13 }}>✓ Saved</span>}
+                    </div>
+                </div>
+            </div>
+
+            {/* Business Timezone */}
+            <div className="glass-card" style={{ padding: '28px clamp(16px, 4vw, 32px)', marginBottom: 20 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Business Timezone</h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 20 }}>
+                    Used to decide when a day starts and ends for &ldquo;Today&rsquo;s Schedule&rdquo; and the calendar. Appointments default to this zone (a location&rsquo;s own timezone overrides it when set).
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 360 }}>
+                    <div>
+                        <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 4 }}>Timezone</label>
+                        <select
+                            className="input input-bordered w-full"
+                            value={timezone}
+                            onChange={e => setTimezone(e.target.value)}
+                        >
+                            {!TIMEZONES.includes(timezone as (typeof TIMEZONES)[number]) && (
+                                <option value={timezone}>{timezone}</option>
+                            )}
+                            {TIMEZONES.map(z => (
+                                <option key={z} value={z}>{z}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <button
+                            className="btn btn-primary btn-sm"
+                            disabled={timezoneSaving}
+                            onClick={async () => {
+                                setTimezoneSaving(true);
+                                setTimezoneSaved(false);
+                                try {
+                                    await api.patch('/tenants/timezone', { timezone });
+                                    await refreshProfile();
+                                    setTimezoneSaved(true);
+                                    setTimeout(() => setTimezoneSaved(false), 3000);
+                                } finally {
+                                    setTimezoneSaving(false);
+                                }
+                            }}
+                        >
+                            {timezoneSaving ? 'Saving…' : 'Save Timezone'}
+                        </button>
+                        {timezoneSaved && <span style={{ color: 'var(--success)', fontSize: 13 }}>✓ Saved</span>}
                     </div>
                 </div>
             </div>

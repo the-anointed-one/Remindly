@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { captureException } from '../sentry';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -38,6 +39,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
         `Unhandled exception: ${exception.message}`,
         exception.stack,
       );
+    }
+
+    // Report only unexpected server-side failures (5xx) to Sentry. 4xx client
+    // errors (validation, not-found, unauthorized, etc.) are expected and would
+    // just be noise. No-op when Sentry isn't configured.
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      captureException(exception);
     }
 
     const body = {

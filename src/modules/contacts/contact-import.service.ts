@@ -17,16 +17,36 @@ const PHONE_ALIASES = [
   'phone',
   'phone number',
   'mobile',
+  'mobile number',
   'cell',
+  'cell number',
   'telephone',
   'tel',
+  'contact number',
 ];
 const EMAIL_ALIASES = ['email', 'email address', 'e-mail'];
 const TAGS_ALIASES = ['tags', 'tag', 'labels', 'groups'];
 const NOTES_ALIASES = ['notes', 'note', 'comment', 'comments'];
 
+/**
+ * Fold a raw spreadsheet header into its comparison form.
+ *
+ * Aliases are written space-separated ("full name"), but real exports just as
+ * often use underscores or hyphens ("full_name", "phone-number"). Collapsing
+ * those separators here covers every variant without duplicating each alias.
+ */
+function normaliseHeader(header: string): string {
+  return header
+    .toLowerCase()
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
 function findColumn(headers: string[], aliases: string[]): string | undefined {
-  return headers.find((h) => aliases.includes(h.toLowerCase().trim()));
+  // Normalise both sides so hyphenated aliases like "e-mail" keep matching.
+  const normalised = aliases.map(normaliseHeader);
+  return headers.find((h) => normalised.includes(normaliseHeader(h)));
 }
 
 export interface ParsedContact {
