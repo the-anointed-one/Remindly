@@ -34,12 +34,6 @@ const PROVIDERS: { id: Provider; label: string; note: string }[] = [
     { id: 'CRYPTO', label: 'Crypto', note: 'BTC, ETH, USDC via Coinbase Commerce' },
 ];
 
-// Dev-only: lets the onboarding flow be tested end-to-end without real
-// PayPal/Coinbase credentials configured. Remove alongside the backend
-// /billing/test-checkout route before deploying to production.
-const IS_TEST_MODE = process.env.NODE_ENV !== 'production';
-const QA_BYPASS_TOKEN = process.env.NEXT_PUBLIC_QA_BYPASS_TOKEN || '';
-
 export default function CheckoutPage() {
     const currency = useCurrency();
     const [plan, setPlan] = useState('SMS_VOICE');
@@ -78,30 +72,6 @@ export default function CheckoutPage() {
         } catch (err: any) {
             const msg = err?.response?.data?.message || 'Checkout initialization failed.';
             setError(msg);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Dev-only: bypass the real payment provider entirely and mark the
-    // subscription active locally, so the dashboard can be reached without
-    // live PayPal/Coinbase credentials. Remove before production deploy.
-    const handleTestCheckout = async () => {
-        setError('');
-        setLoading(true);
-        try {
-            const { data } = await api.post(
-                '/billing/test-checkout',
-                { plan, provider },
-                { headers: { 'x-qa-bypass': QA_BYPASS_TOKEN } },
-            );
-            if (data.authorizationUrl) {
-                window.location.href = data.authorizationUrl;
-            } else {
-                setError(data.error || 'Test checkout failed — check ENABLE_QA_BYPASS/QA_BYPASS_TOKEN.');
-            }
-        } catch (err: any) {
-            setError(err?.response?.data?.message || 'Test checkout failed.');
         } finally {
             setLoading(false);
         }
@@ -213,21 +183,6 @@ export default function CheckoutPage() {
                             </span>
                         ) : 'Start 14-Day Free Trial →'}
                     </button>
-
-                    {/* Dev-only: skip the real payment provider. Remove before deploy. */}
-                    {IS_TEST_MODE && (
-                        <button
-                            onClick={handleTestCheckout}
-                            disabled={loading}
-                            style={{
-                                width: '100%', marginTop: 10, padding: '10px', fontSize: 13,
-                                background: 'transparent', border: '1px dashed #3a3a45', borderRadius: 8,
-                                color: 'var(--text-muted)', cursor: 'pointer',
-                            }}
-                        >
-                            ⚠ Skip payment (test mode — {provider})
-                        </button>
-                    )}
 
                     {/* Trust signals */}
                     <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '8px 16px', marginTop: 20, color: 'var(--text-muted)', fontSize: 12 }}>
