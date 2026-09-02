@@ -20,4 +20,11 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   lastName?: string;
+
+  // IANA timezone auto-detected by the frontend at signup
+  // (Intl.DateTimeFormat().resolvedOptions().timeZone). Optional so older
+  // clients still register; defaults to 'UTC' server-side when absent.
+  @IsOptional()
+  @IsString()
+  timezone?: string;
 }

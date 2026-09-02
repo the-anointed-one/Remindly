@@ -8,6 +8,7 @@ import Icon from '@/components/ui/Icon';
 import { faPlus, faComment, faCalendarPlus, faBell, faTimes, faUsers } from '@fortawesome/free-solid-svg-icons';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
 import ContactTimeline, { Activity } from '@/components/contacts/ContactTimeline';
+import PhoneInput, { isValidPhoneNumber } from '@/components/ui/PhoneInput';
 
 // ── Types ────────────────────────────────────
 interface ContactDetail {
@@ -73,6 +74,20 @@ export default function ContactProfilePage() {
     const [activeTab, setActiveTab] = useState<'activity' | 'appointments' | 'messages' | 'campaigns' | 'reminders'>('activity');
     const [loading, setLoading] = useState(true);
 
+    // Reminders & message history (fetched lazily when their tab opens)
+    interface ReminderRow {
+        id: string; channel: string; status: string; scheduledSendTime: string; sentAt?: string | null;
+        messageContent?: string | null;
+        appointment?: { id: string; title: string; scheduledAt: string; status: string } | null;
+        failedReminder?: { errorCode?: string | null; errorMessage?: string | null; resolvedAt?: string | null; createdAt?: string } | null;
+    }
+    interface MessageRow {
+        id: string; channel: string; direction: string; recipient: string; content?: string | null;
+        providerStatus?: string | null; sentAt?: string | null; createdAt: string;
+    }
+    const [reminders, setReminders] = useState<ReminderRow[] | null>(null);
+    const [messages, setMessages] = useState<MessageRow[] | null>(null);
+
     // Edit state
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -125,6 +140,16 @@ export default function ContactProfilePage() {
 
     useEffect(() => { load(); loadGroups(); }, [id]);
 
+    // Lazily load reminders / message history the first time their tab opens.
+    useEffect(() => {
+        if (activeTab === 'reminders' && reminders === null) {
+            api.get(`/contacts/${id}/reminders`).then(({ data }) => setReminders(data || [])).catch(() => setReminders([]));
+        }
+        if (activeTab === 'messages' && messages === null) {
+            api.get(`/contacts/${id}/messages`).then(({ data }) => setMessages(data || [])).catch(() => setMessages([]));
+        }
+    }, [activeTab, id, reminders, messages]);
+
     // Close dropdown on outside click
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -168,6 +193,10 @@ export default function ContactProfilePage() {
     );
 
     const handleSave = async () => {
+        if (phone !== (contact?.phone ?? '') && phone && !isValidPhoneNumber(phone)) {
+            setError('Please select a country and enter a valid phone number.');
+            return;
+        }
         setSaving(true);
         setError('');
         try {
@@ -273,7 +302,10 @@ export default function ContactProfilePage() {
                         {editing ? (
                             <div style={{ display: 'grid', gap: 14 }}>
                                 <EditField label="Full Name" value={name} onChange={setName} />
-                                <EditField label="Phone" value={phone} onChange={setPhone} />
+                                <div>
+                                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Phone</label>
+                                    <PhoneInput value={phone} onChange={setPhone} placeholder="Phone number" />
+                                </div>
                                 <EditField label="Email" value={email} onChange={setEmail} type="email" />
                                 <EditField label="Tags" value={tagInput} onChange={setTagInput} placeholder="comma-separated" />
                                 <div>
@@ -474,12 +506,31 @@ export default function ContactProfilePage() {
                             )}
 
                             {activeTab === 'messages' && (
-                                <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
-                                    <div style={{ fontSize: 40, marginBottom: 16 }}><Icon icon={faComment} /></div>
-                                    <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Message History Is Empty</h3>
-                                    <p style={{ fontSize: 14, maxWidth: 300, margin: '0 auto' }}>Outbound and inbound messaging logs will appear here.</p>
-                                    <button className="btn btn-primary mt-6">Open Composer</button>
-                                </div>
+                                messages === null ? (
+                                    <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>Loading…</div>
+                                ) : messages.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
+                                        <div style={{ fontSize: 40, marginBottom: 16 }}><Icon icon={faComment} /></div>
+                                        <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Message History Is Empty</h3>
+                                        <p style={{ fontSize: 14, maxWidth: 300, margin: '0 auto' }}>Outbound and inbound messaging logs will appear here.</p>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                        {messages.map((m) => (
+                                            <div key={m.id} style={{ padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-secondary)' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                    <span style={{ fontSize: 13, fontWeight: 700 }}>{m.channel} · {m.direction}</span>
+                                                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                                        {new Date(m.sentAt || m.createdAt).toLocaleString()}
+                                                        {m.providerStatus ? ` · ${m.providerStatus}` : ''}
+                                                    </span>
+                                                </div>
+                                                {m.content && <div style={{ fontSize: 13, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{m.content}</div>}
+                                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>to {m.recipient}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )
                             )}
 
                             {activeTab === 'campaigns' && (
@@ -491,11 +542,58 @@ export default function ContactProfilePage() {
                             )}
 
                             {activeTab === 'reminders' && (
-                                <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
-                                    <div style={{ fontSize: 40, marginBottom: 16 }}><Icon icon={faBell} /></div>
-                                    <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Scheduled Reminders</h3>
-                                    <p style={{ fontSize: 14, maxWidth: 300, margin: '0 auto' }}>Once an appointment is created, you'll see upcoming automated reminders here.</p>
-                                </div>
+                                reminders === null ? (
+                                    <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>Loading…</div>
+                                ) : reminders.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
+                                        <div style={{ fontSize: 40, marginBottom: 16 }}><Icon icon={faBell} /></div>
+                                        <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Scheduled Reminders</h3>
+                                        <p style={{ fontSize: 14, maxWidth: 300, margin: '0 auto' }}>Once an appointment is created, you&apos;ll see upcoming automated reminders here.</p>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                        {reminders.map((r) => {
+                                            const failed = !!r.failedReminder;
+                                            // A plan/usage policy block is a CANCELLED reminder with a
+                                            // FailedReminder reason — surface it as "Blocked" (amber),
+                                            // distinct from a real send "Failed" (red).
+                                            const blocked = r.failedReminder?.errorCode === 'PLAN_NOT_ELIGIBLE';
+                                            const accent = blocked ? '#f59e0b' : '#ef4444';
+                                            const statusColor = failed ? accent
+                                                : r.status === 'SENT' ? '#22c55e'
+                                                : r.status === 'CANCELLED' ? 'var(--text-muted)' : '#f59e0b';
+                                            const reasonTitle = r.failedReminder?.errorCode === 'INVALID_PHONE_FORMAT' ? 'Invalid phone number format'
+                                                : blocked ? 'Blocked by plan or usage limit'
+                                                : (r.failedReminder?.errorCode || 'Send failed');
+                                            return (
+                                                <div key={r.id} style={{ padding: '12px 14px', border: `1px solid ${failed ? (blocked ? 'rgba(245,158,11,0.4)' : 'rgba(239,68,68,0.4)') : 'var(--border)'}`, borderRadius: 10, background: 'var(--bg-secondary)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                        <span style={{ fontSize: 13, fontWeight: 700 }}>
+                                                            {r.channel}
+                                                            {r.appointment?.title ? ` · ${r.appointment.title}` : ''}
+                                                        </span>
+                                                        <span style={{ fontSize: 12, fontWeight: 700, color: statusColor }}>
+                                                            {blocked ? 'BLOCKED' : failed ? 'FAILED' : r.status}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                                        {r.sentAt ? `Sent ${new Date(r.sentAt).toLocaleString()}` : `Scheduled ${new Date(r.scheduledSendTime).toLocaleString()}`}
+                                                    </div>
+                                                    {failed && (
+                                                        <div style={{ marginTop: 8, padding: '8px 10px', background: blocked ? 'rgba(245,158,11,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${blocked ? 'rgba(245,158,11,0.25)' : 'rgba(239,68,68,0.25)'}`, borderRadius: 8 }}>
+                                                            <div style={{ fontSize: 12, fontWeight: 700, color: accent }}>
+                                                                {reasonTitle}
+                                                            </div>
+                                                            {r.failedReminder?.errorMessage && (
+                                                                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{r.failedReminder.errorMessage}</div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )
                             )}
                         </div>
                     </div>

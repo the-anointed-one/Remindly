@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  BadRequestException,
   OnModuleInit,
   OnModuleDestroy,
 } from '@nestjs/common';
@@ -9,6 +10,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { WorkflowEngineService } from '../automation/workflow-engine.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { appendRsvpFooter } from '../../common/utils/rsvp-footer.util';
+import { generateQrToken } from '../../common/utils/qr-token.util';
+import {
+  resolveTenantTimezone,
+  defaultMonthRangeInTz,
+} from '../../common/timezone.util';
 import { ReminderSchedulerService } from '../reminder/reminder-scheduler.service';
 import { Queue } from 'bullmq';
 import {
@@ -62,6 +68,9 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
           endTime: dto.endTime ? new Date(dto.endTime) : undefined,
           eventType: dto.eventType ?? 'APPOINTMENT',
           status: 'DRAFT',
+          incentiveType: dto.incentiveType ?? 'none',
+          incentiveValue: dto.incentiveValue ?? null,
+          incentiveMessage: dto.incentiveMessage ?? null,
         },
       });
 
@@ -186,6 +195,9 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
         endTime: dto.endTime ? new Date(dto.endTime) : undefined,
         eventType: dto.eventType as any,
         status: dto.status as any,
+        incentiveType: dto.incentiveType,
+        incentiveValue: dto.incentiveValue,
+        incentiveMessage: dto.incentiveMessage,
       },
     });
 
@@ -239,10 +251,30 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
 
     return this.prisma.$transaction(async (tx) => {
       const results: any[] = [];
+      const skipped: string[] = [];
+
       for (const contactId of contactIds) {
-        // Find existing appointment first
+        // `contacts` and `customers` are separate tables with separate id
+        // spaces. Appointment.customerId is a FK to Customer, so passing the
+        // contact id straight through violated
+        // `appointments_customer_id_fkey` and rolled back the whole
+        // transaction — meaning no participant was recorded either and every
+        // event invite failed. Resolve (or create) the matching Customer first,
+        // exactly as AppointmentService.ensureCustomer() does.
+        const contact = await tx.contact.findFirst({
+          where: { id: contactId, tenantId },
+        });
+        if (!contact) {
+          // Unknown id, or one belonging to another tenant — skip rather than
+          // abort the whole batch.
+          skipped.push(contactId);
+          continue;
+        }
+
+        const customer = await this.ensureCustomerTx(tx, tenantId, contact);
+
         const existingAppt = await tx.appointment.findFirst({
-          where: { eventId, customerId: contactId, tenantId },
+          where: { eventId, customerId: customer.id, tenantId },
         });
 
         const appointment = await tx.appointment.upsert({
@@ -252,7 +284,7 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
           create: {
             tenantId,
             eventId,
-            customerId: contactId,
+            customerId: customer.id,
             title: `Invitation: ${event.title}`,
             scheduledAt: event.startTime,
             status: 'SCHEDULED',
@@ -262,15 +294,66 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
           },
         });
 
+        // EventParticipant.contactId is a genuine FK to `contacts` — this one
+        // correctly stays the contact id.
         await tx.eventParticipant.upsert({
           where: { eventId_contactId: { eventId, contactId } },
-          create: { eventId, contactId, tenantId, status: 'invited' },
+          create: {
+            eventId,
+            contactId,
+            tenantId,
+            status: 'invited',
+            qrToken: generateQrToken(eventId, contactId),
+          },
+          // Empty on purpose: re-inviting must not mint a new token, or any QR
+          // already handed to the attendee would stop scanning.
           update: {},
         });
 
         results.push(appointment);
       }
-      return { invited: results.length };
+
+      if (skipped.length) {
+        this.logger.warn(
+          `invite(): skipped ${skipped.length} unknown contact(s) for event ${eventId}`,
+        );
+      }
+
+      return { invited: results.length, skipped: skipped.length };
+    });
+  }
+
+  /**
+   * Find the Customer matching a Contact (by phone or email), creating one if
+   * absent. Mirrors AppointmentService.ensureCustomer(), but takes the
+   * transaction client so invite() stays atomic.
+   */
+  private async ensureCustomerTx(
+    tx: any,
+    tenantId: string,
+    contact: { name: string; phone: string | null; email: string | null },
+  ) {
+    const match = [
+      ...(contact.phone ? [{ phone: contact.phone }] : []),
+      ...(contact.email ? [{ email: contact.email }] : []),
+    ];
+
+    if (match.length) {
+      const existing = await tx.customer.findFirst({
+        where: { tenantId, OR: match },
+      });
+      if (existing) return existing;
+    }
+
+    const names = (contact.name || '').split(' ');
+    return tx.customer.create({
+      data: {
+        tenantId,
+        firstName: names[0] || 'Unknown',
+        lastName: names.slice(1).join(' ') || 'Contact',
+        email: contact.email,
+        phone: contact.phone,
+      },
     });
   }
 
@@ -298,10 +381,37 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
     }
 
     // 1. Update Appointment status
-    await this.prisma.appointment.updateMany({
-      where: { eventId, customerId: contactId, tenantId },
-      data: { status },
+    // Same contact-id-vs-customer-id mismatch as invite() had. Here it was a
+    // silent failure rather than a crash: updateMany matched zero rows, so the
+    // appointment status was never updated even though the endpoint returned
+    // success. Resolve the Contact's Customer and match on that.
+    const respondent = await this.prisma.contact.findFirst({
+      where: { id: contactId, tenantId },
+      select: { phone: true, email: true },
     });
+
+    const customerMatch = [
+      ...(respondent?.phone ? [{ phone: respondent.phone }] : []),
+      ...(respondent?.email ? [{ email: respondent.email }] : []),
+    ];
+
+    const customer = customerMatch.length
+      ? await this.prisma.customer.findFirst({
+          where: { tenantId, OR: customerMatch },
+          select: { id: true },
+        })
+      : null;
+
+    if (customer) {
+      await this.prisma.appointment.updateMany({
+        where: { eventId, customerId: customer.id, tenantId },
+        data: { status },
+      });
+    } else {
+      this.logger.warn(
+        `respond(): no Customer found for contact ${contactId} — appointment status not updated for event ${eventId}`,
+      );
+    }
 
     // Update EventParticipant
     const participantStatus =
@@ -390,25 +500,162 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
     return { queuedCount };
   }
 
+  /**
+   * Renders the participant's check-in QR as a data URL.
+   *
+   * Participants invited before QR support existed have no token, so mint one
+   * on first request rather than leaving those events un-scannable.
+   */
+  async generateQrCode(eventId: string, contactId: string, tenantId: string) {
+    const participant = await this.prisma.eventParticipant.findFirst({
+      where: { eventId, contactId, tenantId },
+      include: { contact: true },
+    });
+
+    if (!participant) {
+      throw new NotFoundException('Participant not found');
+    }
+
+    let qrToken = participant.qrToken;
+    if (!qrToken) {
+      qrToken = generateQrToken(eventId, contactId);
+      await this.prisma.eventParticipant.update({
+        where: { id: participant.id },
+        data: { qrToken },
+      });
+    }
+
+    const QRCode = await import('qrcode');
+
+    const qrPayload = JSON.stringify({ eventId, contactId, token: qrToken });
+
+    const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+      width: 300,
+      margin: 2,
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+
+    return {
+      qrCode: qrDataUrl,
+      contactName: participant.contact.name,
+      token: qrToken,
+    };
+  }
+
+  /**
+   * Checks a participant in from a scanned QR token and fires the thank-you SMS.
+   */
+  async processArrival(
+    eventId: string,
+    qrToken: string,
+    tenantId: string,
+    scannedByUserId: string,
+  ) {
+    if (!qrToken || typeof qrToken !== 'string' || !qrToken.trim()) {
+      throw new BadRequestException('No QR token supplied');
+    }
+
+    const participant = await this.prisma.eventParticipant.findFirst({
+      where: { eventId, tenantId, qrToken: qrToken.trim() },
+      include: {
+        contact: true,
+        event: { select: { title: true } },
+      },
+    });
+
+    if (!participant) {
+      throw new NotFoundException(
+        'Invalid QR code — not found for this event',
+      );
+    }
+
+    if (participant.arrivedAt) {
+      throw new BadRequestException(
+        `${participant.contact.name} already checked in at ` +
+          `${participant.arrivedAt.toLocaleTimeString()}`,
+      );
+    }
+
+    // Conditional update: two organisers scanning the same badge at once would
+    // both pass the check above, but only one can match arrivedAt: null here.
+    const claimed = await this.prisma.eventParticipant.updateMany({
+      where: { id: participant.id, arrivedAt: null },
+      data: {
+        arrivedAt: new Date(),
+        status: 'confirmed',
+        qrScannedBy: scannedByUserId,
+      },
+    });
+
+    if (claimed.count === 0) {
+      throw new BadRequestException(
+        `${participant.contact.name} already checked in`,
+      );
+    }
+
+    const arrivedAt = new Date();
+
+    const thankYouMsg =
+      `Welcome, ${participant.contact.name}! ` +
+      `Thank you for attending ${participant.event?.title}. ` +
+      `We are delighted to have you here!`;
+
+    if (participant.contact.phone) {
+      // A messaging failure must not cost the organiser the check-in they
+      // already recorded — the arrival is committed above.
+      await this.messagingService
+        .send(
+          tenantId,
+          'SMS',
+          participant.contact.phone,
+          thankYouMsg,
+          undefined,
+          undefined,
+          eventId,
+          participant.contactId,
+        )
+        .catch((err) => {
+          this.logger.error(
+            `Check-in recorded but thank-you SMS failed for ${participant.contact.name}: ${err.message}`,
+          );
+        });
+    }
+
+    this.logger.log(
+      `${participant.contact.name} checked in at event ${eventId}`,
+    );
+
+    return {
+      success: true,
+      contactName: participant.contact.name,
+      arrivedAt,
+      message: `${participant.contact.name} checked in successfully`,
+    };
+  }
+
   async getStats(tenantId: string, eventId: string) {
-    const [confirmed, pending, cancelled, invited, total] = await Promise.all([
-      this.prisma.eventParticipant.count({
-        where: { eventId, tenantId, status: 'confirmed' },
-      }),
-      this.prisma.eventParticipant.count({
-        where: { eventId, tenantId, status: 'pending' },
-      }),
-      this.prisma.eventParticipant.count({
-        where: { eventId, tenantId, status: 'cancelled' },
-      }),
-      this.prisma.eventParticipant.count({
-        where: { eventId, tenantId, status: 'invited' },
-      }),
-      this.prisma.eventParticipant.count({
-        where: { eventId, tenantId },
-      }),
-    ]);
-    return { confirmed, pending, cancelled, invited, total };
+    const [confirmed, pending, cancelled, invited, arrived, total] =
+      await Promise.all([
+        this.prisma.eventParticipant.count({
+          where: { eventId, tenantId, status: 'confirmed' },
+        }),
+        this.prisma.eventParticipant.count({
+          where: { eventId, tenantId, status: 'pending' },
+        }),
+        this.prisma.eventParticipant.count({
+          where: { eventId, tenantId, status: 'cancelled' },
+        }),
+        this.prisma.eventParticipant.count({
+          where: { eventId, tenantId, status: 'invited' },
+        }),
+        this.prisma.eventParticipant.count({
+          where: { eventId, tenantId, arrivedAt: { not: null } },
+        }),
+        this.prisma.eventParticipant.count({
+          where: { eventId, tenantId },
+        }),
+      ]);
+    return { confirmed, pending, cancelled, invited, arrived, total };
   }
 
   async getSmartReminders(tenantId: string, eventId: string) {
@@ -470,10 +717,36 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async getCalendarFeed(tenantId: string, from: Date, to: Date) {
-    return this.prisma.event.findMany({
+  async getCalendarFeed(tenantId: string, fromStr?: string, toStr?: string) {
+    // Appointments are Events with eventType 'APPOINTMENT' (see
+    // appointment.service.create). The calendar UI consumes a
+    // { events, appointments } shape, so split the rows by type rather than
+    // returning a flat array (which left `data.events`/`data.appointments`
+    // undefined and the calendar permanently empty).
+    //
+    // When the caller omits from/to, the default month window is anchored to
+    // the tenant's business timezone rather than the server's local clock.
+    let from = fromStr ? new Date(fromStr) : undefined;
+    let to = toStr ? new Date(toStr) : undefined;
+    if (!from || !to) {
+      const tz = await resolveTenantTimezone(this.prisma, tenantId);
+      const def = defaultMonthRangeInTz(tz);
+      from = from ?? def.from;
+      to = to ?? def.to;
+    }
+
+    const rows = await this.prisma.event.findMany({
       where: { tenantId, startTime: { gte: from, lte: to } },
+      orderBy: { startTime: 'asc' },
     });
+    return {
+      events: rows
+        .filter((e) => e.eventType !== 'APPOINTMENT')
+        .map((e) => ({ ...e, type: 'event' as const })),
+      appointments: rows
+        .filter((e) => e.eventType === 'APPOINTMENT')
+        .map((e) => ({ ...e, type: 'appointment' as const })),
+    };
   }
 
   async suggestReplacements(tenantId: string, eventId: string, limit = 5) {

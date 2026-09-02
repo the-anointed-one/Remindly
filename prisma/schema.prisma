@@ -44,6 +44,7 @@ model Tenant {
   campaigns                Campaign[]
   channelStrategies        ChannelStrategy[]
   contactActivities        ContactActivity[]
+  contactForms             ContactForm[]
   contactGroups            ContactGroup[]
   contacts                 Contact[]
   customers                Customer[]
@@ -859,6 +860,9 @@ model Event {
   status               EventStatus           @default(DRAFT)
   eventType            EventType             @default(APPOINTMENT) @map("event_type")
   isDemoData           Boolean               @default(false) @map("is_demo_data")
+  incentiveType        String?               @default("none") @map("incentive_type")
+  incentiveValue       String?               @map("incentive_value")
+  incentiveMessage     String?               @map("incentive_message")
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
   appointments         Appointment[]
@@ -889,6 +893,11 @@ model EventParticipant {
   timestamp      DateTime               @default(now())
   lastResponseAt DateTime?              @map("last_response_at")
   isDemoData     Boolean                @default(false) @map("is_demo_data")
+  couponCode     String?                @map("coupon_code")
+  couponSentAt   DateTime?              @map("coupon_sent_at")
+  qrToken        String?                @unique @map("qr_token")
+  arrivedAt      DateTime?              @map("arrived_at")
+  qrScannedBy    String?                @map("qr_scanned_by")
   contact        Contact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
   event          Event                  @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
@@ -927,9 +936,32 @@ model EventResponse {
   contact        Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
   event          Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
+  // One response per contact per event — this is what makes the
+  // eventResponse.upsert({ where: { eventId_contactId } }) in
+  // rsvp-processor.service.ts resolvable.
+  @@unique([eventId, contactId])
   @@index([eventId])
   @@index([contactId])
   @@map("event_responses")
+}
+
+model ContactForm {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  title       String
+  description String?
+  fields      Json
+  isActive    Boolean  @default(true) @map("is_active")
+  slug        String   @unique
+  eventId     String?  @map("event_id") @db.Uuid
+  submissions Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([slug])
+  @@map("contact_forms")
 }
 
 model EventAutomation {

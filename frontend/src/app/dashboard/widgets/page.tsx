@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import api from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import FeatureBanner from '@/components/FeatureBanner';
+import DateTimePicker from '@/components/ui/DateTimePicker';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faWrench, faLightbulb } from '@fortawesome/free-solid-svg-icons';
 
@@ -353,16 +354,16 @@ export default function WidgetsPage() {
                             <div className="grid-2" style={{ gap: 16, marginBottom: 20 }}>
                                 <div>
                                     <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>Start Time</label>
-                                    <input type="time" value={config.workingHoursStart}
-                                        onChange={(e) => setConfig((c) => ({ ...c, workingHoursStart: e.target.value }))}
-                                        title="Standard opening time for bookings."
+                                    <DateTimePicker mode="time" value={config.workingHoursStart}
+                                        onChange={(v) => setConfig((c) => ({ ...c, workingHoursStart: v }))}
+                                        className=""
                                         style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 16 }} />
                                 </div>
                                 <div>
                                     <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>End Time</label>
-                                    <input type="time" value={config.workingHoursEnd}
-                                        onChange={(e) => setConfig((c) => ({ ...c, workingHoursEnd: e.target.value }))}
-                                        title="Standard closing time for bookings."
+                                    <DateTimePicker mode="time" value={config.workingHoursEnd}
+                                        onChange={(v) => setConfig((c) => ({ ...c, workingHoursEnd: v }))}
+                                        className=""
                                         style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 16 }} />
                                 </div>
                             </div>

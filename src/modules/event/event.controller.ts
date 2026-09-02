@@ -18,7 +18,12 @@ import {
   UpdateEventDto,
   ReplaceParticipantDto,
 } from './dto/event.dto';
-import { InviteDto, RespondDto, BroadcastDto } from './dto/event-actions.dto';
+import {
+  InviteDto,
+  RespondDto,
+  BroadcastDto,
+  ScanArrivalDto,
+} from './dto/event-actions.dto';
 import { CurrentUser } from '../../common/decorators';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
@@ -59,14 +64,9 @@ export class EventController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    const now = new Date();
-    const fromDate = from
-      ? new Date(from)
-      : new Date(now.getFullYear(), now.getMonth(), 1);
-    const toDate = to
-      ? new Date(to)
-      : new Date(now.getFullYear(), now.getMonth() + 2, 0);
-    return this.eventService.getCalendarFeed(tenantId, fromDate, toDate);
+    // Defaults are resolved in the service against the tenant's timezone
+    // (not the server's local clock), so pass the raw params straight through.
+    return this.eventService.getCalendarFeed(tenantId, from, to);
   }
 
   @Get(':id')
@@ -83,6 +83,30 @@ export class EventController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.eventService.getStats(tenantId, id);
+  }
+
+  @Get(':eventId/participants/:contactId/qr')
+  getParticipantQr(
+    @CurrentUser('tenantId') tenantId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Param('contactId', ParseUUIDPipe) contactId: string,
+  ) {
+    return this.eventService.generateQrCode(eventId, contactId, tenantId);
+  }
+
+  @Post(':eventId/scan')
+  scanArrival(
+    @CurrentUser('tenantId') tenantId: string,
+    @CurrentUser('userId') userId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() dto: ScanArrivalDto,
+  ) {
+    return this.eventService.processArrival(
+      eventId,
+      dto.token,
+      tenantId,
+      userId,
+    );
   }
 
   @Get(':id/smart-reminders')

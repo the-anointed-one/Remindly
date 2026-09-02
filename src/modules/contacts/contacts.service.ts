@@ -159,6 +159,64 @@ export class ContactsService {
     });
   }
 
+  /**
+   * Reminders for a contact, with their appointment and — crucially — any
+   * FailedReminder row so send failures (e.g. INVALID_PHONE_FORMAT) are
+   * surfaced in the UI instead of vanishing. Matches both directly-linked
+   * reminders (contactId) and appointment reminders reached via the
+   * appointment's participant, so pending reminders whose contactId wasn't
+   * backfilled still appear.
+   */
+  async getReminders(tenantId: string, id: string) {
+    const contact = await this.prisma.contact.findFirst({
+      where: { id, tenantId },
+    });
+    if (!contact) throw new NotFoundException('Contact not found');
+
+    return this.prisma.reminder.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { contactId: id },
+          { appointment: { participants: { some: { contactId: id } } } },
+        ],
+      },
+      include: {
+        appointment: {
+          select: { id: true, title: true, scheduledAt: true, status: true },
+        },
+        failedReminder: {
+          select: {
+            errorCode: true,
+            errorMessage: true,
+            retryCount: true,
+            resolvedAt: true,
+            createdAt: true,
+          },
+        },
+      },
+      orderBy: { scheduledSendTime: 'desc' },
+      take: 100,
+    });
+  }
+
+  /** Outbound/inbound message logs for a contact (direct or via reminder). */
+  async getMessages(tenantId: string, id: string) {
+    const contact = await this.prisma.contact.findFirst({
+      where: { id, tenantId },
+    });
+    if (!contact) throw new NotFoundException('Contact not found');
+
+    return this.prisma.messageLog.findMany({
+      where: {
+        tenantId,
+        OR: [{ contactId: id }, { reminder: { contactId: id } }],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+  }
+
   // ── Update ────────────────────────────────
 
   async update(tenantId: string, id: string, dto: UpdateContactDto) {

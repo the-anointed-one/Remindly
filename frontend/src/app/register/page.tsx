@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import Navbar from '@/components/marketing/Navbar';
+import { detectBrowserTimezone } from '@/lib/timezones';
 import styles from '../login/auth.module.css';
 
 export default function RegisterPage() {
@@ -20,7 +21,9 @@ export default function RegisterPage() {
         setError('');
         setLoading(true);
         try {
-            const { data } = await api.post('/auth/register', form);
+            // Seed the tenant's business timezone from the browser's zone at
+            // signup (stored server-side, not re-detected each session).
+            const { data } = await api.post('/auth/register', { ...form, timezone: detectBrowserTimezone() });
             localStorage.setItem('accessToken', data.accessToken);
             localStorage.setItem('refreshToken', data.refreshToken);
             router.push('/onboarding/plan');

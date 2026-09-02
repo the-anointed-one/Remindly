@@ -8,6 +8,7 @@ import { CryptoProvider } from './crypto.provider';
 import { PaystackWebhookController } from './paystack-webhook.controller';
 import { PaypalWebhookController } from './paypal-webhook.controller';
 import { CryptoWebhookController } from './crypto-webhook.controller';
+import { CouponService } from './coupon.service';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -17,7 +18,19 @@ import { CryptoWebhookController } from './crypto-webhook.controller';
     PaypalWebhookController,
     CryptoWebhookController,
   ],
-  providers: [BillingService, PaystackProvider, PaypalProvider, CryptoProvider],
-  exports: [BillingService, PaystackProvider, PaypalProvider, CryptoProvider],
+  providers: [
+    BillingService,
+    PaystackProvider,
+    PaypalProvider,
+    CryptoProvider,
+    CouponService,
+  ],
+  exports: [
+    BillingService,
+    PaystackProvider,
+    PaypalProvider,
+    CryptoProvider,
+    CouponService,
+  ],
 })
 export class BillingModule {}

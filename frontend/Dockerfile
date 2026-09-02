@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # ────────────────────────────────────────────────
 # Meetora Frontend — Production Dockerfile
 # ────────────────────────────────────────────────
@@ -5,7 +6,18 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# Network-resilient install: the registry connection in some build environments
+# drops mid-download (ECONNRESET / TLS timeouts). Raise npm's per-request retry
+# budget and timeouts, and retry the whole `npm ci` up to 3 times so a single
+# transient drop doesn't fail the entire image build.
+RUN --mount=type=cache,target=/root/.npm \
+    npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set fetch-timeout 600000 \
+    && (npm ci --prefer-offline --no-audit --no-fund \
+        || npm ci --prefer-offline --no-audit --no-fund \
+        || npm ci --prefer-offline --no-audit --no-fund)
 
 FROM node:20-alpine AS builder
 ARG NEXT_PUBLIC_API_URL

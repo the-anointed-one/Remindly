@@ -6,6 +6,10 @@ if (!process.env.NEXT_PUBLIC_API_URL && process.env.NODE_ENV === 'production') {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV !== 'production' ? 'http://localhost:3000/api' : '');
 
+// Areas that require a signed-in user. Everything else — marketing pages,
+// public form links — must stay reachable when the session check fails.
+const PROTECTED_PREFIXES = ['/dashboard', '/onboarding'];
+
 const api = axios.create({
     baseURL: API_BASE,
     headers: { 'Content-Type': 'application/json' },
@@ -77,10 +81,18 @@ api.interceptors.response.use(
                     resolve(api(original));
                 } catch (refreshError) {
                     processQueue(refreshError);
+                    // Only bounce to /login from areas that actually require a
+                    // session. The previous rule redirected from *every* path
+                    // except /login and /register — and because AuthProvider
+                    // sits in the root layout and calls /users/me on every page,
+                    // that meant any logged-out visitor to a public page
+                    // (marketing pages, and shareable /forms/:slug links) was
+                    // thrown to the login screen before the page could render.
                     if (
                         typeof window !== 'undefined' &&
-                        !window.location.pathname.startsWith('/login') &&
-                        !window.location.pathname.startsWith('/register')
+                        PROTECTED_PREFIXES.some((p) =>
+                            window.location.pathname.startsWith(p),
+                        )
                     ) {
                         window.location.href = '/login';
                     }

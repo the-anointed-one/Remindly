@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # ────────────────────────────────────────────────
 # Meetora API — Multi-Stage Production Dockerfile
 # ────────────────────────────────────────────────
@@ -15,7 +16,14 @@ RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma/
-RUN npm ci --omit=dev && npx prisma generate
+RUN --mount=type=cache,target=/root/.npm \
+    npm config set fetch-retries 5 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set fetch-timeout 600000 \
+    && (npm ci --omit=dev --prefer-offline --no-audit --no-fund \
+        || npm ci --omit=dev --prefer-offline --no-audit --no-fund \
+        || npm ci --omit=dev --prefer-offline --no-audit --no-fund) \
+    && npx prisma generate
 
 # ── Stage 2: Build ─────────────────────────────
 FROM node:20-alpine AS builder
@@ -23,7 +31,13 @@ RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma/
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm config set fetch-retries 5 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set fetch-timeout 600000 \
+    && (npm ci --prefer-offline --no-audit --no-fund \
+        || npm ci --prefer-offline --no-audit --no-fund \
+        || npm ci --prefer-offline --no-audit --no-fund)
 COPY . .
 RUN npx prisma generate && npm run build
 

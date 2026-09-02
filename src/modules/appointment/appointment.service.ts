@@ -1,5 +1,11 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveTenantTimezone, dayRangeInTz } from '../../common/timezone.util';
 import { ActivityType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { ReminderSchedulerService } from '../reminder/reminder-scheduler.service';
@@ -110,8 +116,16 @@ export class AppointmentService {
     }
 
     const results: any[] = [];
+    const failed: { contactId: string; contactName: string; error: string }[] =
+      [];
 
     for (const contact of targetContacts) {
+      // Per-contact isolation for bulk (tag/group/segment) bookings: one
+      // contact's failure (bad data, a Customer conflict, a throw from
+      // ensureCustomer/event.create) must not abort the whole batch or discard
+      // the appointments already committed for earlier contacts. Collect the
+      // failure and continue with the rest.
+      try {
       // ── 2. Ensure Customer Record exists for this Contact ──
       const customer = await this.ensureCustomer(tenantId, contact);
 
@@ -179,61 +193,79 @@ export class AppointmentService {
       });
 
       // ── 6. Handle Reminders ──
+      // IMPORTANT: the appointment + event above are already committed to the
+      // database by this point (this method doesn't run inside a single
+      // $transaction). Reminder scheduling is a secondary enhancement, not
+      // the core booking action — a failure here (Redis hiccup, a bad
+      // template, a scheduler bug) must never surface as a booking failure
+      // to the customer. Without this guard, an exception here propagates
+      // all the way up to a 500, the frontend reports "failed to create
+      // appointment," and the user retries and creates a duplicate booking
+      // while the first one — which actually succeeded — sits with no
+      // reminders and no visibility. Fail soft: log it, keep
+      // reminderCount at 0, let the booking stand.
       let reminderCount = 0;
-      if (dto.reminderConfig) {
-        const sendTime = new Date(appointment.scheduledAt);
-        sendTime.setMinutes(sendTime.getMinutes() - 1440); // 24h before
-        if (sendTime > new Date()) {
-          const messageContent = this.templateRenderer.renderTemplate(
-            dto.reminderConfig.template,
-            { name: contact.name, phone: contact.phone, email: contact.email },
-            {
-              title: appointment.title,
-              scheduledAt: appointment.scheduledAt,
-              locationName: appointment.location?.name,
-            },
-          );
+      try {
+        if (dto.reminderConfig) {
+          const sendTime = new Date(appointment.scheduledAt);
+          sendTime.setMinutes(sendTime.getMinutes() - 1440); // 24h before
+          if (sendTime > new Date()) {
+            const messageContent = this.templateRenderer.renderTemplate(
+              dto.reminderConfig.template,
+              { name: contact.name, phone: contact.phone, email: contact.email },
+              {
+                title: appointment.title,
+                scheduledAt: appointment.scheduledAt,
+                locationName: appointment.location?.name,
+              },
+            );
 
-          const reminder = await this.prisma.reminder.create({
-            data: {
-              tenantId,
-              appointmentId: appointment.id,
-              eventId: event.id,
-              contactId: contact.id, // LINK TO CONTACT
-              channel: dto.reminderConfig.channel,
-              scheduledSendTime: sendTime,
-              messageContent,
-              status: 'PENDING',
-            },
-          });
-          const delay = sendTime.getTime() - Date.now();
-          await this.queue.add(
-            'send-reminder',
-            {
-              reminderId: reminder.id,
-              tenantId,
-              appointmentId: appointment.id,
-              channel: dto.reminderConfig.channel,
-              messageContent,
-              scheduledFor: sendTime.toISOString(),
-            },
-            { delay, jobId: `rem_${reminder.id}` },
+            const reminder = await this.prisma.reminder.create({
+              data: {
+                tenantId,
+                appointmentId: appointment.id,
+                eventId: event.id,
+                contactId: contact.id, // LINK TO CONTACT
+                channel: dto.reminderConfig.channel,
+                scheduledSendTime: sendTime,
+                messageContent,
+                status: 'PENDING',
+              },
+            });
+            const delay = sendTime.getTime() - Date.now();
+            await this.queue.add(
+              'send-reminder',
+              {
+                reminderId: reminder.id,
+                tenantId,
+                appointmentId: appointment.id,
+                channel: dto.reminderConfig.channel,
+                messageContent,
+                scheduledFor: sendTime.toISOString(),
+              },
+              { delay, jobId: `rem_${reminder.id}` },
+            );
+            reminderCount = 1;
+          }
+        } else {
+          const reminders = await this.reminderScheduler.scheduleForAppointment(
+            appointment.id,
+            tenantId,
           );
-          reminderCount = 1;
+          // Update reminders to link to contactId
+          if (reminders.length > 0) {
+            await this.prisma.reminder.updateMany({
+              where: { id: { in: reminders.map((r) => r.id) } },
+              data: { contactId: contact.id, eventId: event.id },
+            });
+          }
+          reminderCount = reminders.length;
         }
-      } else {
-        const reminders = await this.reminderScheduler.scheduleForAppointment(
-          appointment.id,
-          tenantId,
+      } catch (reminderError: any) {
+        this.logger.error(
+          `Reminder scheduling failed for appointment ${appointment.id} (booking still succeeded): ${reminderError?.message}`,
+          reminderError?.stack,
         );
-        // Update reminders to link to contactId
-        if (reminders.length > 0) {
-          await this.prisma.reminder.updateMany({
-            where: { id: { in: reminders.map((r) => r.id) } },
-            data: { contactId: contact.id, eventId: event.id },
-          });
-        }
-        reminderCount = reminders.length;
       }
 
       // ── 7. Fire lifecycle (automation + prediction) ──
@@ -251,6 +283,26 @@ export class AppointmentService {
         .catch(() => {});
 
       results.push({ ...appointment, scheduledReminders: reminderCount });
+      } catch (contactError: any) {
+        this.logger.error(
+          `Appointment creation failed for contact ${contact.id} (${contact.name}) in bulk booking: ${contactError?.message}`,
+          contactError?.stack,
+        );
+        failed.push({
+          contactId: contact.id,
+          contactName: contact.name,
+          error: contactError?.message ?? 'Unknown error',
+        });
+      }
+    }
+
+    // Every contact failed — this is a real failure, don't report "success"
+    // for zero bookings. (targetContacts is guaranteed non-empty above.)
+    if (results.length === 0) {
+      throw new BadRequestException(
+        `Appointment creation failed for all ${failed.length} contact(s): ` +
+          failed.map((f) => `${f.contactName}: ${f.error}`).join('; '),
+      );
     }
 
     // Auto-create RSVP campaign for bulk events (tag/group/segment targets)
@@ -271,7 +323,7 @@ export class AppointmentService {
 
     return targetContacts.length === 1
       ? results[0]
-      : { count: results.length, appointments: results };
+      : { count: results.length, appointments: results, failures: failed };
   }
 
   private async ensureCustomer(
@@ -546,10 +598,11 @@ export class AppointmentService {
   }
 
   async findToday(tenantId: string) {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+    // "Today" is bucketed by the tenant's business timezone, not the server's
+    // process clock — otherwise a late-evening appointment in e.g.
+    // America/Toronto falls into the wrong UTC day near the boundary.
+    const tz = await resolveTenantTimezone(this.prisma, tenantId);
+    const { start, end } = dayRangeInTz(tz);
 
     return this.prisma.appointment.findMany({
       where: { tenantId, scheduledAt: { gte: start, lte: end } },
@@ -562,7 +615,12 @@ export class AppointmentService {
     });
   }
 
-  /** Upcoming (next 48 h) appointments that are not yet CONFIRMED */
+  /**
+   * Upcoming (next 48 h) appointments that are not yet CONFIRMED.
+   * This is a rolling absolute-time window: both `now` and `now + 48h` are
+   * exact instants, so — unlike findToday's calendar-day bucketing — it is
+   * inherently timezone-independent and needs no tz math.
+   */
   async findNeedsAttention(tenantId: string) {
     const now = new Date();
     const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);

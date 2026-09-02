@@ -17,9 +17,10 @@ import {
     faCreditCard, faCheckCircle, faTimesCircle, faLock, faBars, faXmark,
     faExclamationTriangle, faClock, faChartLine
 } from '@fortawesome/free-solid-svg-icons';
+import { faWpforms } from '@fortawesome/free-brands-svg-icons';
 import UserMenu from '@/components/navigation/UserMenu';
 
-// ── PRIMARY NAV (6 items) ─────────────────────────────────────
+// ── PRIMARY NAV (7 items) ─────────────────────────────────────
 const NAV_PRIMARY = [
     { href: '/dashboard',              icon: faHouse,        label: 'Home' },
     { href: '/dashboard/contacts',     icon: faUsers,        label: 'Contacts' },
@@ -27,6 +28,7 @@ const NAV_PRIMARY = [
     { href: '/dashboard/automations',  icon: faBolt,         label: 'Follow-ups' },
     { href: '/dashboard/events',       icon: faCalendar,     label: 'Events' },
     { href: '/dashboard/campaigns',    icon: faCommentDots,  label: 'Campaigns' },
+    { href: '/dashboard/forms',        icon: faWpforms,      label: 'Forms' },
 ];
 
 // ── SETTINGS (bottom) ────────────────────────────────────────

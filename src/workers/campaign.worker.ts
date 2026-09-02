@@ -14,18 +14,30 @@ import {
   getRedisConnection,
   CampaignJobData,
 } from '../queue/queue.config';
+import { startWorkerHealthServer } from './worker-health';
+import { initSentry, captureException } from '../common/sentry';
 
 import * as dotenv from 'dotenv';
 dotenv.config();
 
+// Error tracking — no-op unless SENTRY_DSN is set.
+initSentry('campaign-worker');
+
 const prisma = new PrismaClient();
 const connection = getRedisConnection();
 const dlq = new Queue<CampaignJobData>(CAMPAIGN_DLQ, { connection });
+// Queue handle used only by the health endpoint (Redis PING + waiting count).
+const campaignQueue = new Queue<CampaignJobData>(CAMPAIGN_QUEUE, { connection });
+
+// Updated whenever a campaign job completes or fails; the health endpoint flags
+// the worker unhealthy if this goes stale while jobs are still waiting.
+let lastCampaignJobAt = Date.now();
 
 // ── Dependency Setup for Messaging ────────────
 
 import { ConfigService } from '@nestjs/config';
 import { TwilioProvider } from '../modules/messaging/twilio.provider';
+import { TermiiProvider } from '../modules/messaging/termii.provider';
 import { MockSendService } from '../modules/messaging/mock-send.service';
 import { AuditService } from '../modules/audit/audit.service';
 import { MessagingService } from '../modules/messaging/messaging.service';
@@ -42,6 +54,7 @@ const messagingService = new MessagingService(
   mockSendService,
   auditService,
   new EmailProvider(configService),
+  new TermiiProvider(configService),
 );
 
 // ── Template interpolation ───────────────────
@@ -298,10 +311,13 @@ class CampaignWorker {
     );
 
     this.worker.on('completed', (job) => {
+      lastCampaignJobAt = Date.now();
       this.logger.log(`✓ Campaign job ${job.id} completed`);
     });
 
     this.worker.on('failed', async (job, err) => {
+      // A failed attempt is still progress (the worker isn't stuck).
+      lastCampaignJobAt = Date.now();
       if (!job) return;
       const attemptsMade = job.attemptsMade;
       const maxAttempts = job.opts.attempts ?? 3;
@@ -328,8 +344,10 @@ class CampaignWorker {
 
   async shutdown() {
     this.logger.log('\n🛑 Shutting down campaign worker...');
+    campaignHealthServer.close();
     await this.worker.close();
     await dlq.close();
+    await campaignQueue.close();
     await prisma.$disconnect();
     process.exit(0);
   }
@@ -337,7 +355,40 @@ class CampaignWorker {
 
 const campaignWorker = new CampaignWorker();
 
+// ── Health endpoint ──────────────────────────
+// Internal-only HTTP liveness probe for docker-compose's healthcheck (deeper
+// than the old `ps aux | grep`). Not published via docker-compose ports.
+const campaignHealthServer = startWorkerHealthServer({
+  name: 'campaign-worker',
+  port: Number(process.env.WORKER_HEALTH_PORT) || 3001,
+  queue: campaignQueue,
+  getLastProcessedAt: () => lastCampaignJobAt,
+  maxIdleMs: Number(process.env.WORKER_HEALTH_MAX_IDLE_MS) || undefined,
+  logger: new Logger('CampaignWorkerHealth'),
+});
+
 process.on('SIGTERM', () => campaignWorker.shutdown());
 process.on('SIGINT', () => campaignWorker.shutdown());
+
+// ── Process-level safety net ─────────────────
+// Same reasoning as reminder.worker.ts: BullMQ isolates errors thrown inside
+// the job processor and routes them through the normal failed/retry/DLQ
+// path, but an unhandled rejection or sync throw anywhere else in this
+// process would otherwise kill it silently (Node's default behavior) —
+// Docker restarts it, but with no record of why, and any campaign send
+// batch in flight gets abandoned mid-run. Log loudly instead.
+const processLogger = new Logger('CampaignWorkerProcess');
+
+process.on('unhandledRejection', (reason: unknown) => {
+  processLogger.error(
+    `🚨 Unhandled promise rejection in campaign worker: ${reason instanceof Error ? reason.stack : String(reason)}`,
+  );
+  captureException(reason);
+});
+
+process.on('uncaughtException', (err: Error) => {
+  processLogger.error(`🚨 Uncaught exception in campaign worker: ${err.stack}`);
+  captureException(err);
+});
 
 setInterval(() => { }, 60000);

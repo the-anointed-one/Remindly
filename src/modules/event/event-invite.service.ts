@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { appendRsvpFooter } from '../../common/utils/rsvp-footer.util';
+import { generateQrToken } from '../../common/utils/qr-token.util';
 
 @Injectable()
 export class EventInviteService {
@@ -73,7 +74,10 @@ export class EventInviteService {
         contactId: contact.id,
         tenantId,
         status: 'invited' as any,
+        qrToken: generateQrToken(eventId, contact.id),
       })),
+      // skipDuplicates leaves already-invited participants (and their existing
+      // QR tokens) untouched.
       skipDuplicates: true,
     });
 

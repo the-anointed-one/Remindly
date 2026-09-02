@@ -1,4 +1,11 @@
-import { IsString, IsArray, IsUUID, IsEnum, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsArray,
+  IsUUID,
+  IsEnum,
+  IsOptional,
+  IsNotEmpty,
+} from 'class-validator';
 
 export class InviteDto {
   @IsArray()
@@ -18,6 +25,12 @@ export class RespondDto {
 
   @IsEnum(RsvpResponse)
   response: RsvpResponse;
+}
+
+export class ScanArrivalDto {
+  @IsString()
+  @IsNotEmpty()
+  token: string;
 }
 
 export class BroadcastDto {

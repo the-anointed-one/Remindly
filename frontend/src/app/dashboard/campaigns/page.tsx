@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import FeatureBanner from '@/components/FeatureBanner';
 import EmptyState from '@/components/EmptyState';
 import Icon from '@/components/ui/Icon';
+import DateTimePicker from '@/components/ui/DateTimePicker';
 import { HelpTip } from '@/components/ui/Tooltip';
 import TooltipField from '@/components/ui/TooltipField';
 import {
@@ -239,9 +240,11 @@ function DispatchModal({ campaign, tags, onClose, onSuccess }: {
     const [channel, setChannel] = useState<ChannelType>('SMS');
     const [messageTemplate, setMessageTemplate] = useState('Hi {{customer_name}}, reminder: your appointment is on {{appointment_date}} at {{appointment_time}}. See you then!');
     const [scheduledAt, setScheduledAt] = useState(() => {
+        // DateTimePicker's datetime value is a full UTC ISO instant (it renders
+        // it in the business timezone), so seed the default as a full ISO too.
         const d = new Date();
         d.setMinutes(d.getMinutes() + 5);
-        return d.toISOString().slice(0, 16);
+        return d.toISOString();
     });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -337,7 +340,7 @@ function DispatchModal({ campaign, tags, onClose, onSuccess }: {
                     </TooltipField>
 
                     <TooltipField label="Schedule Send Time" tooltip="Choose when to push the dispatch queue via Background Jobs.">
-                        <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} required style={inputStyle} />
+                        <DateTimePicker value={scheduledAt} onChange={setScheduledAt} required className="" style={inputStyle} />
                     </TooltipField>
 
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 4 }}>

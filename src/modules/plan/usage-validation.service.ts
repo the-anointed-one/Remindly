@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { Tenant } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { PLAN_LIMITS } from './plan-limits';
 
 export type FeatureType =
   | 'SMS'
@@ -226,6 +227,29 @@ export class UsageValidationService {
       return {
         allowed: true,
         remaining: tenant.whatsappMonthlyLimit - tenant.whatsappUsageCount,
+      };
+    }
+
+    if (feature === 'SMS') {
+      // SMS previously had no active-subscription monthly cap (only a trial
+      // check), while plan-limits defines a finite smsMonthlyLimit per tier.
+      // Mirror the WhatsApp/AI pattern, sourcing the cap from PLAN_LIMITS since
+      // there is no per-tenant smsMonthlyLimit column. A missing/zero limit is
+      // treated as "don't block" so a config gap never blocks a paying tenant.
+      const smsMonthlyLimit = PLAN_LIMITS[tenant.planType]?.smsMonthlyLimit ?? 0;
+      if (smsMonthlyLimit > 0 && tenant.smsUsageCount >= smsMonthlyLimit) {
+        return {
+          allowed: false,
+          reason: `Monthly SMS usage limit reached (${smsMonthlyLimit}). Resets at next billing cycle.`,
+          remaining: 0,
+        };
+      }
+      return {
+        allowed: true,
+        remaining:
+          smsMonthlyLimit > 0
+            ? smsMonthlyLimit - tenant.smsUsageCount
+            : undefined,
       };
     }
 

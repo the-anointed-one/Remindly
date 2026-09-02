@@ -17,10 +17,14 @@
     "@fortawesome/react-fontawesome": "^3.2.0",
     "@headlessui/react": "^2.2.9",
     "axios": "^1.13.6",
+    "date-fns-tz": "^3.2.0",
     "framer-motion": "^12.35.2",
+    "html5-qrcode": "^2.3.8",
     "next": "16.1.6",
     "react": "19.2.3",
+    "react-datepicker": "^9.1.0",
     "react-dom": "19.2.3",
+    "react-phone-number-input": "^3.4.17",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

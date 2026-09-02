@@ -40,4 +40,17 @@ export class TenantController {
   ) {
     return this.tenantService.updateSenderIdentity(tenantId, dto);
   }
+
+  @Get('timezone')
+  getTimezone(@CurrentUser('tenantId') tenantId: string) {
+    return this.tenantService.getTimezone(tenantId);
+  }
+
+  @Patch('timezone')
+  updateTimezone(
+    @CurrentUser('tenantId') tenantId: string,
+    @Body('timezone') timezone: string,
+  ) {
+    return this.tenantService.updateTimezone(tenantId, timezone);
+  }
 }

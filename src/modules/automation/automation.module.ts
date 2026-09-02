@@ -4,11 +4,13 @@ import { AutomationService } from './automation.service';
 import { WorkflowEngineService } from './workflow-engine.service';
 import { WorkflowProcessorService } from './workflow-processor.service';
 import { MessagingModule } from '../messaging/messaging.module';
+import { BillingModule } from '../billing/billing.module';
 import { WorkflowWorker } from '../../workers/workflow.worker';
 import { AutomationExecutionTracker } from './automation-execution-tracker.service';
 
 @Module({
-  imports: [MessagingModule],
+  // BillingModule: WorkflowWorker uses CouponService to mint incentive codes.
+  imports: [MessagingModule, BillingModule],
   controllers: [AutomationController],
   providers: [
     AutomationService,

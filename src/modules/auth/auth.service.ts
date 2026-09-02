@@ -61,6 +61,15 @@ export class AuthService {
             'AI_MONTHLY_LIMIT',
             50,
           ),
+          // Seed the business timezone from the frontend's auto-detected zone,
+          // defaulting to UTC. Stored in the settings JSON blob (same place as
+          // sender identity) — no dedicated column.
+          settings: {
+            timezone:
+              typeof dto.timezone === 'string' && dto.timezone.trim()
+                ? dto.timezone.trim()
+                : 'UTC',
+          },
         },
       });
 

@@ -25,6 +25,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { HelpTip } from '@/components/ui/Tooltip';
 import TooltipField from '@/components/ui/TooltipField';
+import PhoneInput, { isValidPhoneNumber } from '@/components/ui/PhoneInput';
 
 // ── Types ────────────────────────────────────
 
@@ -108,6 +109,10 @@ function AddContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim()) return;
+        if (phone && !isValidPhoneNumber(phone)) {
+            setError('Please select a country and enter a valid phone number.');
+            return;
+        }
         setSaving(true);
         setError('');
         try {
@@ -140,8 +145,7 @@ function AddContactModal({ onClose, onCreated }: { onClose: () => void; onCreate
                     </TooltipField>
                     <div className="grid-2">
                         <TooltipField label="Phone" tooltip="Phone number with country code for SMS and WhatsApp.">
-                            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890"
-                                style={{ width: '100%', padding: '9px 12px', borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 16 }} />
+                            <PhoneInput value={phone} onChange={setPhone} placeholder="Phone number" />
                         </TooltipField>
                         <TooltipField label="Email" tooltip="Email address for email reminders.">
                             <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" type="email"
@@ -677,7 +681,7 @@ export default function ContactsPage() {
                                     <div>
                                         <input type="checkbox" checked={selected.has(contact.id)} onChange={() => toggleSelect(contact.id)} style={{ cursor: 'pointer' }} />
                                     </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                                    <Link href={`/dashboard/contacts/${contact.id}`} title="Edit contact" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, textDecoration: 'none', color: 'inherit' }}>
                                         <Avatar name={contact.name} />
                                         <div style={{ minWidth: 0 }}>
                                             <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -687,7 +691,7 @@ export default function ContactsPage() {
                                                 )}
                                             </div>
                                         </div>
-                                    </div>
+                                    </Link>
                                     <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                                         {contact.phone && <div>{contact.phone}</div>}
                                         {contact.email && <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{contact.email}</div>}
@@ -701,8 +705,11 @@ export default function ContactsPage() {
                                             ? new Date(contact.lastAppointment).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
                                             : '—'}
                                     </div>
-                                    <div style={{ cursor: 'pointer' }} onClick={() => setSidebarContactId(contact.id)}>
-                                        <span style={{ fontSize: 13, color: 'var(--text-accent)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                                        <Link href={`/dashboard/contacts/${contact.id}`} style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap', textDecoration: 'none' }}>
+                                            Edit
+                                        </Link>
+                                        <span onClick={() => setSidebarContactId(contact.id)} style={{ fontSize: 13, color: 'var(--text-accent)', fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer' }}>
                                             View Activity →
                                         </span>
                                     </div>
@@ -715,13 +722,15 @@ export default function ContactsPage() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                                 <input type="checkbox" checked={selected.has(contact.id)} onChange={() => toggleSelect(contact.id)} style={{ cursor: 'pointer' }} />
-                                                <Avatar name={contact.name} />
-                                                <div style={{ fontWeight: 700, fontSize: 15 }}>
-                                                    {contact.name}
-                                                    {contact.unsubscribed && (
-                                                        <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--error)', background: 'rgba(224, 82, 82, 0.1)', border: '1px solid rgba(224, 82, 82, 0.25)', borderRadius: 4, padding: '1px 5px' }}>OPT-OUT</span>
-                                                    )}
-                                                </div>
+                                                <Link href={`/dashboard/contacts/${contact.id}`} title="Edit contact" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, textDecoration: 'none', color: 'inherit' }}>
+                                                    <Avatar name={contact.name} />
+                                                    <div style={{ fontWeight: 700, fontSize: 15 }}>
+                                                        {contact.name}
+                                                        {contact.unsubscribed && (
+                                                            <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--error)', background: 'rgba(224, 82, 82, 0.1)', border: '1px solid rgba(224, 82, 82, 0.25)', borderRadius: 4, padding: '1px 5px' }}>OPT-OUT</span>
+                                                        )}
+                                                    </div>
+                                                </Link>
                                             </div>
                                         </div>
                                         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
@@ -738,12 +747,20 @@ export default function ContactsPage() {
                                                     ? new Date(contact.lastAppointment).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
                                                     : '—'}
                                             </div>
-                                            <button
-                                                onClick={() => setSidebarContactId(contact.id)}
-                                                className="btn btn-outline" style={{ fontSize: 12, padding: '4px 10px' }}
-                                            >
-                                                View Activity →
-                                            </button>
+                                            <div style={{ display: 'flex', gap: 8 }}>
+                                                <Link
+                                                    href={`/dashboard/contacts/${contact.id}`}
+                                                    className="btn btn-outline" style={{ fontSize: 12, padding: '4px 10px', textDecoration: 'none' }}
+                                                >
+                                                    Edit
+                                                </Link>
+                                                <button
+                                                    onClick={() => setSidebarContactId(contact.id)}
+                                                    className="btn btn-outline" style={{ fontSize: 12, padding: '4px 10px' }}
+                                                >
+                                                    View Activity →
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 ))}

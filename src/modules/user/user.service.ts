@@ -38,10 +38,22 @@ export class UserService {
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { ...MEMBER_SELECT, tenantId: true },
+      select: {
+        ...MEMBER_SELECT,
+        tenantId: true,
+        tenant: { select: { settings: true } },
+      },
     });
     if (!user) throw new NotFoundException('User not found');
-    return user;
+    // Surface the business timezone (settings.timezone, default UTC) so the
+    // client can default the DateTimePicker to it instead of the browser zone.
+    const settings = (user.tenant?.settings as Record<string, unknown>) ?? {};
+    const tz = settings.timezone;
+    const { tenant: _tenant, ...rest } = user;
+    return {
+      ...rest,
+      tenantTimezone: typeof tz === 'string' && tz.trim() ? tz : 'UTC',
+    };
   }
 
   async updateMe(userId: string, data: UpdateUserDto) {
