@@ -1,5 +1,11 @@
 # Meetora — Deployment & Rollback Guide
 
+> **Deploying to Railway + Vercel?** Use
+> [`DEPLOY_RAILWAY_VERCEL.md`](./DEPLOY_RAILWAY_VERCEL.md) instead. That is the
+> current production path. This file documents the self-hosted
+> VPS + docker-compose path, whose GitHub Actions workflow is now
+> `workflow_dispatch`-only.
+
 ---
 
 ## DevOps Setup (one-time)
@@ -98,10 +104,13 @@ In your `.env` on the server, update:
 CORS_ORIGINS=https://app.yourdomain.com
 FRONTEND_URL=https://app.yourdomain.com
 NEXT_PUBLIC_API_URL=https://api.yourdomain.com/api
-TWILIO_WEBHOOK_URL=https://api.yourdomain.com/api/webhooks/twilio/voice
+TWILIO_WEBHOOK_URL=https://api.yourdomain.com/api/webhooks/twilio
 GOOGLE_REVIEWS_REDIRECT_URI=https://api.yourdomain.com/api/google-reviews/callback
 GOOGLE_CALENDAR_REDIRECT_URI=https://api.yourdomain.com/api/calendar/callback
 API_BASE_URL=https://api.yourdomain.com
+# Error tracking — set to your Sentry project DSN to enable centralized error
+# reporting on the api/worker/campaign-worker. Leave unset to disable.
+SENTRY_DSN=https://<key>@<org>.ingest.sentry.io/<project-id>
 ```
 
 ### 6. First deploy (manual)
@@ -120,7 +129,7 @@ Total deploy time: ~3–4 minutes.
 
 | Service | Free tier | Use when |
 |---------|-----------|----------|
-| [Sentry](https://sentry.io) | 5k errors/month | Error tracking — worth adding immediately |
+| [Sentry](https://sentry.io) | 5k errors/month | Error tracking — **already integrated** (api + workers); just set `SENTRY_DSN` to activate |
 | [UptimeRobot](https://uptimerobot.com) | 50 monitors, 5-min checks | Uptime alerts to email/Slack |
 | [Neon](https://neon.tech) | 0.5GB Postgres | If you outgrow the VPS disk |
 | [Upstash](https://upstash.com) | 10k Redis req/day | Redis managed HA (may be too low for BullMQ — test first) |
@@ -128,6 +137,25 @@ Total deploy time: ~3–4 minutes.
 ---
 
 ## Deployment Order
+
+> ⚠️ **`api`, `worker`, and `campaign-worker` build from the same `Dockerfile` but as three
+> independent images** — each bakes its own Prisma Client at build time, and each also runs
+> `npx prisma migrate deploy` itself on container startup (see the `Dockerfile` `CMD`). If a
+> migration drops or renames a column/table, whichever service restarts first applies it to
+> the shared database immediately — any other service still running its old (pre-rebuild)
+> image will crash with a `column does not exist` / `Invalid ... invocation` error until it's
+> rebuilt too. This bit us for real: `20260629150852_remove_predictions_reactivation_referrals`
+> dropped `appointments.no_show_risk_score`, and a stale `worker` container kept trying to
+> select it, sending every reminder job to the DLQ with `MAX_RETRIES_EXHAUSTED` until it was
+> rebuilt.
+>
+> **Rule: for any release that includes a destructive migration (dropped/renamed
+> column or table), rebuild and restart `api`, `worker`, and `campaign-worker` together —
+> never selectively rebuild just one.** `docker compose up -d --build` with no service filter
+> (step 3 below) does this correctly; `docker compose up -d --build api` alone does not.
+> For genuinely zero-downtime schema changes, prefer an expand/contract pattern instead —
+> stop reading/writing the column in code across all services first, deploy that everywhere,
+> then drop the column in a later migration once you're sure no old code is still running.
 
 1. **Database Migrations** (always first)
    ```bash
