@@ -58,6 +58,12 @@ COPY --from=deps /app/prisma ./prisma
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
 
+# Entrypoint script. Copied here rather than after USER because the chmod
+# below needs root — COPY lands files owned by root regardless of USER, so a
+# later `RUN chmod` as nestjs would fail with "Operation not permitted".
+COPY start.sh ./start.sh
+RUN chmod +x ./start.sh
+
 # Set ownership
 RUN chown -R nestjs:nodejs /app
 USER nestjs
@@ -70,4 +76,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health/live || exit 1
 
 # Run migrations then start
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main.js"]
+CMD ["./start.sh"]
